@@ -1355,7 +1355,7 @@ export default function FaceScanApp() {
                   if (dbUser) {
                     setDbUserId(dbUser.id)
                     // Continue with save using the new ID
-                    await upsertProfile(dbUser.id, {
+                    const savedLong = await upsertProfile(dbUser.id, {
                       full_name: profile.fullName,
                       email: profile.email,
                       phone: profile.phone,
@@ -1364,22 +1364,27 @@ export default function FaceScanApp() {
                       gender: profile.gender,
                       address: profile.address,
                     })
-                    setProfileSaved(true)
-                    setTimeout(() => setProfileSaved(false), 3000)
-                    return
+                    if (savedLong) {
+                      setProfileSaved(true)
+                      setTimeout(() => setProfileSaved(false), 3000)
+                      return
+                    }
+                  } else {
+                    alert(isAr ? "فشل الاتصال بقاعدة البيانات. تأكد من إعداد Supabase بشكل صحيح." : "Failed to connect to database. Check Supabase configuration.")
                   }
-                } catch (e) {
-                  console.error(e)
+                } catch (e: any) {
+                  alert("DB Error: " + (e.message || e))
                 } finally {
                   setSavingToDB(false)
                 }
+                return
               }
-              alert(isAr ? "لم يتم التعرف على هوية المستخدم بعد. يرجى الانتظار ثانية أو إعادة تحميل الصفحة." : "User ID not found yet. Please wait a second or refresh.")
+              alert(isAr ? "لم يتم تسجيل الدخول بعد. يرجى الانتظار ثانية." : "Not authenticated yet. Please wait.")
               return
             }
             setSavingToDB(true)
             try {
-              await upsertProfile(dbUserId, {
+              const res = await upsertProfile(dbUserId, {
                 full_name: profile.fullName,
                 email: profile.email,
                 phone: profile.phone,
@@ -1388,11 +1393,15 @@ export default function FaceScanApp() {
                 gender: profile.gender,
                 address: profile.address,
               })
-              setProfileSaved(true)
-              setTimeout(() => setProfileSaved(false), 3000)
-            } catch (err) {
+              if (res) {
+                setProfileSaved(true)
+                setTimeout(() => setProfileSaved(false), 3000)
+              } else {
+                alert(isAr ? "حدث خطأ أثناء حفظ البيانات." : "Error saving data.")
+              }
+            } catch (err: any) {
               console.error("Profile save error:", err)
-              alert(isAr ? "فشل حفظ الملف الشخصي" : "Failed to save profile")
+              alert((isAr ? "فشل حفظ الملف الشخصي: " : "Failed to save profile: ") + (err.message || err))
             } finally {
               setSavingToDB(false)
             }

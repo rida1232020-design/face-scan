@@ -161,8 +161,9 @@ export async function upsertUser(piUid: string, username: string): Promise<DbUse
 
     if (error) {
       console.error("upsertUser error:", error)
-      return null
+      throw new Error(`DB Error: ${error.message} (${error.code})`)
     }
+    if (!data) throw new Error("DB Error: No data returned from upsertUser")
     return data as DbUser
   }
 
@@ -227,8 +228,9 @@ export async function upsertProfile(
       .single()
     if (error) {
       console.error("upsertProfile error:", error)
-      return null
+      throw new Error(`DB Error: ${error.message} (${error.code})`)
     }
+    if (!data) throw new Error("DB Error: No data returned from upsertProfile")
     return data as DbProfile
   }
 
