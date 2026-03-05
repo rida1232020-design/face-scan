@@ -122,9 +122,12 @@ export async function authenticatePiUser(): Promise<PiUser | null> {
 
     _piUser = piUser
     return piUser
-  } catch (error) {
+  } catch (error: any) {
     console.error("Pi authentication failed:", error)
-    return null
+    if (error.message === "Server auth failed") {
+      throw new Error("SERVER_AUTH_FAILED")
+    }
+    throw error
   }
 }
 

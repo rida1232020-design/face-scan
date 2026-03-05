@@ -1380,7 +1380,13 @@ export default function FaceScanApp() {
                   }
                 } catch (e: any) {
                   console.error("Save error:", e)
-                  alert((isAr ? "خطأ في قاعدة البيانات: " : "DB Error: ") + (e.message || e))
+                  if (e.message.includes("Supabase is not configured")) {
+                    alert(isAr ? "قاعدة البيانات غير مهيأة. يرجى ملء بيانات Supabase في ملف .env.local" : "Supabase is not configured. Please fill in .env.local values.")
+                  } else if (e.message === "SERVER_AUTH_FAILED") {
+                    alert(isAr ? "فشل التحقق من الهوية مع الخادم. تأكد من صحة PI_API_KEY في ملف .env.local" : "Server verification failed. Check your PI_API_KEY in .env.local.")
+                  } else {
+                    alert((isAr ? "خطأ في قاعدة البيانات: " : "DB Error: ") + (e.message || e))
+                  }
                 } finally {
                   setSavingToDB(false)
                 }
@@ -1409,7 +1415,11 @@ export default function FaceScanApp() {
               }
             } catch (err: any) {
               console.error("Profile save error:", err)
-              alert((isAr ? "فشل حفظ الملف الشخصي: " : "Failed to save profile: ") + (err.message || err))
+              if (err.message.includes("Supabase is not configured")) {
+                alert(isAr ? "قاعدة البيانات غير مهيأة. يرجى ملء بيانات Supabase في ملف .env.local" : "Supabase is not configured. Please fill in .env.local values.")
+              } else {
+                alert((isAr ? "فشل حفظ الملف الشخصي: " : "Failed to save profile: ") + (err.message || err))
+              }
             } finally {
               setSavingToDB(false)
             }
