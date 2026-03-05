@@ -448,10 +448,14 @@ export default function FaceScanApp() {
         // Try restore from localStorage first
         const savedUser = localStorage.getItem("medipi_pi_user")
         if (savedUser) {
-          const u: PiUser = JSON.parse(savedUser)
-          setPiAuth({ user: u, loading: false, error: null })
-          await loadUserData(u)
-          return
+          try {
+            const u: PiUser = JSON.parse(savedUser)
+            setPiAuth({ user: u, loading: false, error: null })
+            await loadUserData(u)
+            return
+          } catch (e) {
+            localStorage.removeItem("medipi_pi_user")
+          }
         }
         // Authenticate fresh
         const user = await authenticatePiUser()
@@ -462,8 +466,9 @@ export default function FaceScanApp() {
         } else {
           setPiAuth({ user: null, loading: false, error: "auth_failed" })
         }
-      } catch (e) {
-        setPiAuth({ user: null, loading: false, error: "auth_error" })
+      } catch (e: any) {
+        console.error("Pi Init Error:", e)
+        setPiAuth({ user: null, loading: false, error: e.message || "auth_error" })
       }
     }
     init()
@@ -530,8 +535,9 @@ export default function FaceScanApp() {
           })))
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("loadUserData error:", e)
+      // alert(isAr ? "فشل تحميل بيانات المستخدم من قاعدة البيانات: " : "Failed to load user data from database: " + (e.message || e))
     }
   }
 
@@ -1373,13 +1379,15 @@ export default function FaceScanApp() {
                     alert(isAr ? "فشل الاتصال بقاعدة البيانات. تأكد من إعداد Supabase بشكل صحيح." : "Failed to connect to database. Check Supabase configuration.")
                   }
                 } catch (e: any) {
-                  alert("DB Error: " + (e.message || e))
+                  console.error("Save error:", e)
+                  alert((isAr ? "خطأ في قاعدة البيانات: " : "DB Error: ") + (e.message || e))
                 } finally {
                   setSavingToDB(false)
                 }
                 return
               }
-              alert(isAr ? "لم يتم تسجيل الدخول بعد. يرجى الانتظار ثانية." : "Not authenticated yet. Please wait.")
+              const errMsg = piAuth.error ? (isAr ? `خطأ في الهوية: ${piAuth.error}` : `Auth Error: ${piAuth.error}`) : (isAr ? "لم يتم التعرف على هوية المستخدم بعد. جرب الانتظار أو إعادة التحميل." : "User identity not found yet. Try waiting or reloading.")
+              alert(errMsg)
               return
             }
             setSavingToDB(true)
