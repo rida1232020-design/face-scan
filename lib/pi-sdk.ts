@@ -174,11 +174,22 @@ export async function createPiPayment(
         },
         onReadyForServerCompletion: async (paymentId: string, txid: string) => {
           try {
+            // Get current user for piUid
+            const user = getCurrentPiUser();
+            
             // Complete payment on server
             await fetch("/api/payment/complete", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ paymentId, txid, memo, amount }),
+              body: JSON.stringify({ 
+                paymentId, 
+                txid, 
+                memo, 
+                amount,
+                piUid: user?.uid,
+                description: metadata.description || memo,
+                descriptionAr: metadata.descriptionAr || memo
+              }),
             })
             resolve({ success: true, paymentId, txid })
           } catch (e) {

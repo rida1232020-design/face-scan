@@ -58,10 +58,14 @@ export async function POST(request: NextRequest) {
                 pi_balance: user?.pi_balance || 0,
             },
         })
-    } catch (error) {
-        console.error("Pi auth error:", error)
+    } catch (error: any) {
+        console.error("Pi auth error detail:", {
+            message: error.message,
+            stack: error.stack,
+            uid: await request.clone().json().then(b => b.uid).catch(() => "unknown")
+        })
         return NextResponse.json(
-            { error: "Internal server error" },
+            { error: "Internal server error: " + error.message },
             { status: 500 }
         )
     }

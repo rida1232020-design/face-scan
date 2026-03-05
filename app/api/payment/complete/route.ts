@@ -54,8 +54,12 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ success: true, completed: true })
-    } catch (error) {
-        console.error("Payment complete route error:", error)
-        return NextResponse.json({ error: "Internal error" }, { status: 500 })
+    } catch (error: any) {
+        console.error("Payment complete route error:", {
+            message: error.message,
+            stack: error.stack,
+            body: await request.clone().json().catch(() => ({})),
+        })
+        return NextResponse.json({ error: "Internal error: " + error.message }, { status: 500 })
     }
 }
