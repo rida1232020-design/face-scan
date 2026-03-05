@@ -1,0 +1,250 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Updated color scheme for medical app with light blue/white theme */
+  --background: oklch(1 0 0); /* Pure white background */
+  --foreground: oklch(0.35 0 0); /* Dark gray text */
+  --card: oklch(0.98 0.005 210); /* Very light blue-tinted white for cards */
+  --card-foreground: oklch(0.35 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.35 0 0);
+  --primary: oklch(0.55 0.15 210); /* Medical blue primary color */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.6 0.12 270); /* Subtle purple accent */
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.96 0.01 210); /* Light blue-gray muted */
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.65 0.18 45); /* Warm accent for highlights */
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.6 0.2 15); /* Medical red for warnings */
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.01 210); /* Light blue-tinted borders */
+  --input: oklch(0.98 0.005 210);
+  --ring: oklch(0.55 0.15 210 / 0.5); /* Primary color with transparency */
+  --chart-1: oklch(0.6 0.12 270);
+  --chart-2: oklch(0.55 0.15 210);
+  --chart-3: oklch(0.35 0 0);
+  --chart-4: oklch(0.65 0.18 45);
+  --chart-5: oklch(0.6 0.2 15);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.98 0.005 210);
+  --sidebar-foreground: oklch(0.35 0 0);
+  --sidebar-primary: oklch(1 0 0);
+  --sidebar-primary-foreground: oklch(0.35 0 0);
+  --sidebar-accent: oklch(0.6 0.12 270);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.9 0.01 210);
+  --sidebar-ring: oklch(0.55 0.15 210 / 0.3);
+}
+
+.dark {
+  /* Dark mode colors maintaining medical theme */
+  --background: oklch(0.12 0.01 210); /* Dark blue-tinted background */
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.15 0.01 210);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.12 0.01 210);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.65 0.15 210); /* Brighter blue for dark mode */
+  --primary-foreground: oklch(0.12 0.01 210);
+  --secondary: oklch(0.25 0.02 210);
+  --secondary-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.18 0.01 210);
+  --muted-foreground: oklch(0.7 0 0);
+  --accent: oklch(0.25 0.02 210);
+  --accent-foreground: oklch(0.95 0 0);
+  --destructive: oklch(0.5 0.15 15);
+  --destructive-foreground: oklch(0.7 0.2 15);
+  --border: oklch(0.18 0.01 210);
+  --input: oklch(0.18 0.01 210);
+  --ring: oklch(0.5 0 0);
+  --chart-1: oklch(0.55 0.2 270);
+  --chart-2: oklch(0.7 0.15 180);
+  --chart-3: oklch(0.75 0.18 70);
+  --chart-4: oklch(0.65 0.25 300);
+  --chart-5: oklch(0.65 0.2 15);
+  --sidebar: oklch(0.15 0.01 210);
+  --sidebar-foreground: oklch(0.95 0 0);
+  --sidebar-primary: oklch(0.55 0.2 270);
+  --sidebar-primary-foreground: oklch(0.95 0 0);
+  --sidebar-accent: oklch(0.18 0.01 210);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.18 0.01 210);
+  --sidebar-ring: oklch(0.5 0 0);
+}
+
+@theme inline {
+  /* Updated font variables to use Inter and JetBrains Mono */
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Smartwatch optimizations for small screens (Apple Watch, Samsung Galaxy Watch, Huawei Watch, etc.) */
+  @media (max-width: 320px) {
+    html {
+      font-size: 12px;
+    }
+
+    body {
+      font-size: 0.875rem;
+      line-height: 1.4;
+    }
+
+    /* Reduce padding and margins for compact display */
+    .space-y-6 > * + * {
+      margin-top: 1rem !important;
+    }
+
+    .space-y-4 > * + * {
+      margin-top: 0.75rem !important;
+    }
+
+    /* Optimize button sizes for small touch targets */
+    button {
+      min-height: 36px;
+      padding: 0.5rem 0.75rem;
+    }
+
+    /* Reduce card padding */
+    [class*="CardContent"] {
+      padding: 0.75rem !important;
+    }
+
+    /* Optimize text sizes */
+    h2 {
+      font-size: 1.25rem !important;
+    }
+
+    h3 {
+      font-size: 1.1rem !important;
+    }
+
+    /* Make navigation more compact */
+    nav button {
+      padding: 0.5rem !important;
+    }
+  }
+
+  /* Circular smartwatch displays (Samsung Galaxy Watch, Huawei Watch GT, etc.) */
+  @media (max-width: 320px) and (max-height: 320px) {
+    body {
+      border-radius: 50%;
+      overflow: hidden;
+    }
+
+    main {
+      padding: 1rem 0.5rem !important;
+    }
+  }
+
+  /* Apple Watch specific optimizations */
+  @media (max-width: 198px) {
+    html {
+      font-size: 10px;
+    }
+
+    body {
+      font-size: 0.75rem;
+    }
+
+    button {
+      min-height: 32px;
+      font-size: 0.7rem;
+    }
+  }
+
+  /* Samsung Galaxy Watch / Huawei Watch optimizations (larger circular displays) */
+  @media (min-width: 320px) and (max-width: 450px) and (max-height: 450px) {
+    html {
+      font-size: 13px;
+    }
+
+    /* Optimize for circular display */
+    main {
+      padding: 1.5rem 1rem;
+    }
+  }
+
+  /* Touch target optimization for all wearables */
+  @media (pointer: coarse) and (max-width: 450px) {
+    button,
+    a,
+    input,
+    select,
+    textarea {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Increase tap area for navigation */
+    nav button {
+      padding: 0.75rem 1rem;
+    }
+  }
+
+  /* Reduce animations on wearables to save battery */
+  @media (max-width: 450px) {
+    * {
+      animation-duration: 0.2s !important;
+      transition-duration: 0.15s !important;
+    }
+  }
+
+  /* High contrast mode for outdoor visibility on smartwatches */
+  @media (prefers-contrast: high) {
+    :root {
+      --border: oklch(0.7 0.01 210);
+    }
+
+    body {
+      font-weight: 500;
+    }
+  }
+}
