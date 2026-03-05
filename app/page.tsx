@@ -1347,7 +1347,36 @@ export default function FaceScanApp() {
 
         <button
           onClick={async () => {
-            if (!dbUserId) return
+            if (!dbUserId) {
+              if (piAuth.user) {
+                setSavingToDB(true)
+                try {
+                  const dbUser = await upsertUser(piAuth.user.uid, piAuth.user.username)
+                  if (dbUser) {
+                    setDbUserId(dbUser.id)
+                    // Continue with save using the new ID
+                    await upsertProfile(dbUser.id, {
+                      full_name: profile.fullName,
+                      email: profile.email,
+                      phone: profile.phone,
+                      age: parseInt(profile.age) || 30,
+                      dob: profile.dob,
+                      gender: profile.gender,
+                      address: profile.address,
+                    })
+                    setProfileSaved(true)
+                    setTimeout(() => setProfileSaved(false), 3000)
+                    return
+                  }
+                } catch (e) {
+                  console.error(e)
+                } finally {
+                  setSavingToDB(false)
+                }
+              }
+              alert(isAr ? "لم يتم التعرف على هوية المستخدم بعد. يرجى الانتظار ثانية أو إعادة تحميل الصفحة." : "User ID not found yet. Please wait a second or refresh.")
+              return
+            }
             setSavingToDB(true)
             try {
               await upsertProfile(dbUserId, {
