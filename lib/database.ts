@@ -111,7 +111,7 @@ function getSupabase(): SupabaseClient | null {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !key || url.includes("your-project-id") || key.includes("your-anon-key")) {
-    throw new Error("Supabase is not configured. Please fill in NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local")
+    return null
   }
 
   supabaseClient = createClient(url, key)
@@ -238,15 +238,13 @@ export async function upsertProfile(
   const updated: DbProfile = {
     id: existing?.id || `local_prof_${Date.now()}`,
     user_id: userId,
-    full_name: "",
-    email: "",
-    phone: "",
-    age: 30,
-    gender: "",
-    address: "",
+    full_name: profile.full_name || existing?.full_name || "",
+    email: profile.email || existing?.email || "",
+    phone: profile.phone || existing?.phone || "",
+    age: profile.age || existing?.age || 30,
+    gender: profile.gender || existing?.gender || "",
+    address: profile.address || existing?.address || "",
     updated_at: new Date().toISOString(),
-    ...existing,
-    ...profile,
   }
   lsSet("profile", updated)
   return updated
