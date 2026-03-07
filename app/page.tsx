@@ -444,7 +444,9 @@ export default function FaceScanApp() {
   useEffect(() => {
     const init = async () => {
       try {
-        initPiSDK()
+        console.log("Starting Pi SDK Initialization...")
+        await initPiSDK()
+
         // Try restore from localStorage first
         const savedUser = localStorage.getItem("medipi_pi_user")
         if (savedUser) {
@@ -452,22 +454,26 @@ export default function FaceScanApp() {
             const u: PiUser = JSON.parse(savedUser)
             setPiAuth({ user: u, loading: false, error: null })
             await loadUserData(u)
+            console.log("Restored Pi User from localStorage")
             return
           } catch (e) {
             localStorage.removeItem("medipi_pi_user")
           }
         }
+
         // Authenticate fresh
+        console.log("Attempting Pi Authentication...")
         const user = await authenticatePiUser()
         if (user) {
           localStorage.setItem("medipi_pi_user", JSON.stringify(user))
           setPiAuth({ user, loading: false, error: null })
           await loadUserData(user)
+          console.log("Pi Authentication successful")
         } else {
           setPiAuth({ user: null, loading: false, error: "auth_failed" })
         }
       } catch (e: any) {
-        console.error("Pi Init Error:", e)
+        console.error("Pi Init/Auth Error:", e)
         setPiAuth({ user: null, loading: false, error: e.message || "auth_error" })
       }
     }

@@ -2,6 +2,7 @@ import type React from "react";
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,8 +29,11 @@ html {
   --font-mono: ${GeistMono.variable};
 }
         `}</style>
-        {/* Pi Network SDK – required for Pi Browser payments and auth */}
-        <script src="https://sdk.minepi.com/pi-sdk.js" />
+        {/* Pi Network SDK – loaded with beforeInteractive to ensure it's ready early */}
+        <Script
+          src="https://sdk.minepi.com/pi-sdk.js"
+          strategy="beforeInteractive"
+        />
       </head>
       <body>
         {children}
