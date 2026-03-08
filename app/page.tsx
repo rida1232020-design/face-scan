@@ -836,9 +836,9 @@ export default function FaceScanApp() {
         dbUserId: dbUserId || "",
       })
 
-      if (payment && payment.status === "completed") {
+      if (payment && payment.success) {
         const tx: Transaction = {
-          id: payment.identifier,
+          id: payment.paymentId || `tx_${Date.now()}`,
           amount: -amount,
           description: desc,
           descriptionAr: descAr,
@@ -847,11 +847,15 @@ export default function FaceScanApp() {
         }
         setTransactions(p => [tx, ...p])
         return true
+      } else {
+        const errorMsg = payment?.error || (isAr ? "فشل غير معروف" : "Unknown failure")
+        console.error("Payment failed:", errorMsg)
+        alert((isAr ? "فشل الدفع: " : "Payment failed: ") + errorMsg)
+        return false
       }
-      return false
-    } catch (err) {
-      console.error("Payment error:", err)
-      alert(isAr ? "فشل الدفع. حاول مجدداً." : "Payment failed. Please try again.")
+    } catch (err: any) {
+      console.error("Payment exception:", err)
+      alert(isAr ? "حدث خطأ أثناء معالجة الدفع. حاول مجدداً." : "An error occurred during payment. Please try again.")
       return false
     } finally {
       setPaymentLoading(false)

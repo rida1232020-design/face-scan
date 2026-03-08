@@ -37,10 +37,10 @@ export async function POST(request: NextRequest) {
         )
 
         if (!response.ok) {
-            const error = await response.text()
-            console.error("Pi payment approval failed:", error)
+            const errorText = await response.text()
+            console.error("Pi payment approval failed:", errorText)
             return NextResponse.json(
-                { error: "Payment approval failed" },
+                { error: `Pi API Error: ${errorText}` },
                 { status: 400 }
             )
         }

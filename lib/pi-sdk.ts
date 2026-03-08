@@ -211,14 +211,21 @@ export async function createPiPayment(
       {
         onReadyForServerApproval: async (paymentId: string) => {
           try {
+            console.log("Approving payment on server:", paymentId)
             // Approve payment on server
-            await fetch("/api/payment", {
+            const res = await fetch("/api/payment", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ paymentId }),
             })
+            if (!res.ok) {
+              const text = await res.text()
+              console.error("Server payment approval failed:", text)
+            } else {
+              console.log("Server payment approval successful")
+            }
           } catch (e) {
-            console.error("Payment approval failed:", e)
+            console.error("Payment approval fetch failed:", e)
           }
         },
         onReadyForServerCompletion: async (paymentId: string, txid: string) => {
