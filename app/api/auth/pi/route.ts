@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
         if (piApiKey && accessToken && accessToken !== "dev_token") {
             try {
                 const verifyResponse = await fetch(
-                    "https://api.minepi.com/v2/me",
+                    "https://api.minepi.com/v2/me" ,
                     {
                         headers: {
                             Authorization: `Bearer ${accessToken}`,
