@@ -855,7 +855,8 @@ export default function FaceScanApp() {
       }
     } catch (err: any) {
       console.error("Payment exception:", err)
-      alert(isAr ? "حدث خطأ أثناء معالجة الدفع. حاول مجدداً." : "An error occurred during payment. Please try again.")
+      const errDetail = err?.message || String(err)
+      alert((isAr ? "حدث خطأ أثناء معالجة الدفع: " : "An error occurred during payment: ") + errDetail)
       return false
     } finally {
       setPaymentLoading(false)
@@ -863,7 +864,7 @@ export default function FaceScanApp() {
   }
 
   const handlePremiumUpgrade = async () => {
-    const ok = await processPayment(10, "Premium Upgrade – Neural Health Scan", "ترقية مميزة – الفحص الصحي العصبي")
+    const ok = await processPayment(0.005, "Premium Upgrade – Neural Health Scan", "ترقية مميزة – الفحص الصحي العصبي")
     if (ok) {
       setIsPremium(true)
       setShowPayDialog(null)
@@ -1020,7 +1021,7 @@ export default function FaceScanApp() {
       ) : (
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-3 cursor-pointer" onClick={() => setShowPayDialog("premium")}>
           <p className="font-semibold text-sm">{isAr ? "ترقية للنسخة المميزة" : "Upgrade to Premium"}</p>
-          <p className="text-xs text-muted-foreground mt-1">{isAr ? "π10 لفتح التحليل الكامل والتوصيات الطبية المتخصصة" : "π10 for full analysis & specialized medical recommendations"}</p>
+          <p className="text-xs text-muted-foreground mt-1">{isAr ? "π0.005 لفتح التحليل الكامل والتوصيات الطبية المتخصصة" : "π0.005 for full analysis & specialized medical recommendations"}</p>
         </div>
       )}
     </div>

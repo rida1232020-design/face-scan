@@ -193,9 +193,14 @@ export async function createPiPayment(
   memo: string,
   metadata: Record<string, any> = {}
 ): Promise<{ success: boolean; paymentId?: string; txid?: string; error?: string }> {
-  return new Promise((resolve) => {
-    if (!isPiBrowser()) {
-      // Simulate payment in development mode
+  // Ensure initialized first
+  if (isPiBrowser() && !_isInitialized) {
+    await initPiSDK()
+  }
+
+  if (!isPiBrowser()) {
+    // Simulate payment in development mode
+    return new Promise((resolve) => {
       setTimeout(() => {
         resolve({
           success: true,
@@ -203,63 +208,78 @@ export async function createPiPayment(
           txid: `sim_tx_${Date.now()}`,
         })
       }, 2000)
-      return
+    })
+  }
+
+  // Double check initialization
+  if (!_isInitialized || !window.Pi) {
+    const ready = await waitForPiSDK()
+    if (!ready || !window.Pi) {
+      throw new Error("Pi SDK not available for payment")
     }
+  }
 
-    window.Pi.createPayment(
-      { amount, memo, metadata },
-      {
-        onReadyForServerApproval: async (paymentId: string) => {
-          try {
-            console.log("Approving payment on server:", paymentId)
-            // Approve payment on server
-            const res = await fetch("/api/payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ paymentId }),
-            })
-            if (!res.ok) {
-              const text = await res.text()
-              console.error("Server payment approval failed:", text)
-            } else {
-              console.log("Server payment approval successful")
+  return new Promise((resolve) => {
+    try {
+      console.log("Calling Pi.createPayment with amount:", amount)
+      window.Pi.createPayment(
+        { amount, memo, metadata },
+        {
+          onReadyForServerApproval: async (paymentId: string) => {
+            try {
+              console.log("Approving payment on server:", paymentId)
+              const res = await fetch("/api/payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ paymentId }),
+              })
+              if (!res.ok) {
+                const text = await res.text()
+                console.error("Server payment approval failed:", text)
+                // Note: We don't resolve here; the SDK might handle the failure or timeout
+              } else {
+                console.log("Server payment approval successful")
+              }
+            } catch (e) {
+              console.error("Payment approval fetch failed:", e)
             }
-          } catch (e) {
-            console.error("Payment approval fetch failed:", e)
-          }
-        },
-        onReadyForServerCompletion: async (paymentId: string, txid: string) => {
-          try {
-            // Get current user for piUid
-            const user = getCurrentPiUser();
-
-            // Complete payment on server
-            await fetch("/api/payment/complete", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                paymentId,
-                txid,
-                memo,
-                amount,
-                piUid: user?.uid,
-                description: metadata.description || memo,
-                descriptionAr: metadata.descriptionAr || memo
-              }),
-            })
-            resolve({ success: true, paymentId, txid })
-          } catch (e) {
-            console.error("Payment completion failed:", e)
-            resolve({ success: true, paymentId, txid }) // Still resolve as Pi processed it
-          }
-        },
-        onCancel: (paymentId: string) => {
-          resolve({ success: false, paymentId, error: "cancelled" })
-        },
-        onError: (error: Error) => {
-          resolve({ success: false, error: error.message })
-        },
-      }
-    )
+          },
+          onReadyForServerCompletion: async (paymentId: string, txid: string) => {
+            try {
+              console.log("Completing payment on server:", paymentId, txid)
+              const user = getCurrentPiUser();
+              await fetch("/api/payment/complete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  paymentId,
+                  txid,
+                  memo,
+                  amount,
+                  piUid: user?.uid,
+                  description: metadata.description || memo,
+                  descriptionAr: metadata.descriptionAr || memo
+                }),
+              })
+              resolve({ success: true, paymentId, txid })
+            } catch (e) {
+              console.error("Payment completion failed:", e)
+              resolve({ success: true, paymentId, txid })
+            }
+          },
+          onCancel: (paymentId: string) => {
+            console.log("Payment cancelled:", paymentId)
+            resolve({ success: false, paymentId, error: "cancelled" })
+          },
+          onError: (error: Error, payment?: any) => {
+            console.error("Pi SDK Payment Error:", error, payment)
+            resolve({ success: false, error: error.message || "SDK Error" })
+          },
+        }
+      )
+    } catch (e: any) {
+      console.error("Pi.createPayment thrown error:", e)
+      resolve({ success: false, error: e.message || "Execution Error" })
+    }
   })
 }
