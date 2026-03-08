@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   full_name   TEXT DEFAULT '',
   email       TEXT DEFAULT '',
   phone       TEXT DEFAULT '',
-  age         INTEGER DEFAULT 30,
+  age         INTEGER DEFAULT '',
   dob         DATE,
   gender      TEXT DEFAULT '',
   address     TEXT DEFAULT '',
