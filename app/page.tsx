@@ -856,7 +856,13 @@ export default function FaceScanApp() {
     } catch (err: any) {
       console.error("Payment exception:", err)
       const errDetail = err?.message || String(err)
-      alert((isAr ? "حدث خطأ أثناء معالجة الدفع: " : "An error occurred during payment: ") + errDetail)
+      if (errDetail.includes("payments") || errDetail.includes("scope")) {
+        alert(isAr 
+          ? "تحتاج لفتح الرصيد (payments scope). يرجى تسجيل الخروج ثم الدخول مرة أخرى." 
+          : "You need 'payments' scope. Please sign out and sign in again.")
+      } else {
+        alert((isAr ? "حدث خطأ أثناء معالجة الدفع: " : "An error occurred during payment: ") + errDetail)
+      }
       return false
     } finally {
       setPaymentLoading(false)
@@ -1475,6 +1481,19 @@ export default function FaceScanApp() {
           </button>
         </div>
       </div>
+
+      <div className="pt-4 pb-2">
+        <button
+          onClick={() => {
+            setPiAuth({ user: null, loading: false, error: null });
+            localStorage.removeItem("medipi_pi_user");
+            window.location.reload();
+          }}
+          className="w-full py-3.5 border border-red-200 text-red-600 rounded-2xl text-sm font-bold hover:bg-red-50 transition-all active:scale-95"
+        >
+          {isAr ? "تسجيل الخروج (لتحديث الصلاحيات)" : "Sign Out (to refresh permissions)"}
+        </button>
+      </div>
     </div>
   )
 
@@ -1484,7 +1503,7 @@ export default function FaceScanApp() {
       <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
         <h3 className="font-bold text-lg text-center">{isAr ? "ترقية مميزة" : "Premium Upgrade"}</h3>
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2">
-          <p className="font-semibold text-center text-2xl text-primary">π 10</p>
+          <p className="font-semibold text-center text-2xl text-primary">π 0.005</p>
           <ul className="text-xs space-y-1.5 text-muted-foreground">
             {(isAr ? [
               "تحليل كامل لمؤشرات الشيخوخة المبكرة",
@@ -1508,7 +1527,7 @@ export default function FaceScanApp() {
             {isAr ? "إلغاء" : "Cancel"}
           </button>
           <button onClick={handlePremiumUpgrade} disabled={paymentLoading} className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium disabled:opacity-50">
-            {paymentLoading ? (isAr ? "جاري الدفع…" : "Processing…") : (isAr ? "ادفع π10" : "Pay π10")}
+            {paymentLoading ? (isAr ? "جاري الدفع…" : "Processing…") : (isAr ? "ادفع π0.005" : "Pay π0.005")}
           </button>
         </div>
         <p className="text-xs text-center text-muted-foreground">
