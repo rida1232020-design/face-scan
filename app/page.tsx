@@ -754,7 +754,7 @@ export default function FaceScanApp() {
     setVoiceAnalysis({ analyzed: false, stressLevel: null, energyLevel: null, acousticAge: null, confidence: null })
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error(isAr ? "المتصفح لا يدعم تسجيل الصوت" : "Browser does not support audio recording")
+        throw new Error("unsupported")
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -830,7 +830,15 @@ export default function FaceScanApp() {
       }, 5000)
 
     } catch (err: any) {
-      setVoiceError(err.message || (isAr ? "تعذر الوصول للميكروفون" : "Could not access microphone"))
+      if (err.message === "unsupported") {
+        setVoiceError(isAr ? "متصفحك الحالي لا يدعم تسجيل الصوت. حاول استخدام Chrome أو Safari وتأكد من استخدام اتصال آمن (HTTPS)." : "Your browser doesn't support audio recording. Try Chrome or Safari, and ensure you use a secure connection (HTTPS).")
+      } else if (err.name === "NotAllowedError" || err.message?.toLowerCase().includes("permission denied")) {
+        setVoiceError(isAr ? "تم رفض صلاحية الميكروفون. يرجى تفعيل إذن الميكروفون من إعدادات المتصفح وإعادة المحاولة." : "Microphone permission denied. Please allow microphone access in your browser settings and try again.")
+      } else if (err.name === "NotFoundError") {
+        setVoiceError(isAr ? "لم يتم العثور على ميكروفون متصل بجهازك." : "No microphone found on your device.")
+      } else {
+        setVoiceError(isAr ? "تعذر الوصول للميكروفون: " + err.message : "Could not access microphone: " + err.message)
+      }
       setIsRecording(false)
     }
   }
