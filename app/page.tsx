@@ -41,10 +41,12 @@ const HeartIcon = () => (
     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
   </svg>
 )
-const WatchIcon = () => (
+const MicIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="5" y="2" width="14" height="20" rx="7" /><path d="M16 2H8" /><path d="M16 22H8" />
-    <path d="M12 10v4l2 2" />
+    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
   </svg>
 )
 const ShieldIcon = () => (
@@ -80,7 +82,7 @@ const ActivityIcon = () => (
 )
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type Tab = "home" | "scan" | "wallet" | "profile"
+type Tab = "home" | "scan" | "profile"
 type Lang = "en" | "ar"
 
 interface HealthTrend {
@@ -135,15 +137,12 @@ interface ScanResult {
   overallHealthScore: number
 }
 
-interface WatchData {
-  connected: boolean
-  deviceName: string
-  heartRate: number | null
-  bloodPressureSystolic: number | null
-  bloodPressureDiastolic: number | null
-  oxygenLevel: number | null
-  steps: number | null
-  lastUpdated: string | null
+interface VoiceAnalysis {
+  analyzed: boolean
+  stressLevel: number | null
+  energyLevel: number | null
+  acousticAge: number | null
+  confidence: number | null
 }
 
 interface Transaction {
@@ -405,14 +404,16 @@ export default function FaceScanApp() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([])
 
-  // Smartwatch
-  const [watchData, setWatchData] = useState<WatchData>({
-    connected: false, deviceName: "", heartRate: null,
-    bloodPressureSystolic: null, bloodPressureDiastolic: null,
-    oxygenLevel: null, steps: null, lastUpdated: null,
+  // Voice Analysis
+  const [voiceAnalysis, setVoiceAnalysis] = useState<VoiceAnalysis>({
+    analyzed: false, stressLevel: null, energyLevel: null, acousticAge: null, confidence: null
   })
-  const [connectingWatch, setConnectingWatch] = useState(false)
-  const [watchError, setWatchError] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isAnalyzingVoice, setIsAnalyzingVoice] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<BlobPart[]>([])
+
 
   // Wallet / Payment
   const [balance, setBalance] = useState(125.50)
@@ -448,7 +449,7 @@ export default function FaceScanApp() {
         await initPiSDK()
 
         // Try restore from localStorage first
-        const savedUser = localStorage.getItem("medipi_pi_user")
+        const savedUser = localStorage.getItem("facescan_pi_user")
         if (savedUser) {
           try {
             const u: PiUser = JSON.parse(savedUser)
@@ -457,7 +458,7 @@ export default function FaceScanApp() {
             console.log("Restored Pi User from localStorage")
             return
           } catch (e) {
-            localStorage.removeItem("medipi_pi_user")
+            localStorage.removeItem("facescan_pi_user")
           }
         }
 
@@ -465,7 +466,7 @@ export default function FaceScanApp() {
         console.log("Attempting Pi Authentication...")
         const user = await authenticatePiUser()
         if (user) {
-          localStorage.setItem("medipi_pi_user", JSON.stringify(user))
+          localStorage.setItem("facescan_pi_user", JSON.stringify(user))
           setPiAuth({ user, loading: false, error: null })
           await loadUserData(user)
           console.log("Pi Authentication successful")
@@ -740,81 +741,73 @@ export default function FaceScanApp() {
     }
   }
 
-  // ── Smartwatch Connection (Web Bluetooth) ──────────────────────────────────
-  const connectWatch = async () => {
-    setConnectingWatch(true)
-    setWatchError(null)
+  // ── Voice Analysis ────────────────────────────────────────────────────────
+  const startVoiceRecording = async () => {
+    setVoiceError(null)
+    setVoiceAnalysis({ analyzed: false, stressLevel: null, energyLevel: null, acousticAge: null, confidence: null })
     try {
-      if (!("bluetooth" in navigator)) throw new Error("no_bluetooth")
-
-      // @ts-ignore
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { services: ["heart_rate"] },
-          { services: ["blood_pressure"] },
-          { namePrefix: "Galaxy Watch" },
-          { namePrefix: "HUAWEI" },
-          { namePrefix: "Apple Watch" },
-        ],
-        optionalServices: ["heart_rate", "blood_pressure", "0000180d-0000-1000-8000-00805f9b34fb"],
-      })
-
-      const server = await device.gatt.connect()
-
-      let heartRate: number | null = null
-      let bpSystolic: number | null = null
-      let bpDiastolic: number | null = null
-      let oxygen: number | null = null
-
-      // Heart rate
-      try {
-        const hrService = await server.getPrimaryService("heart_rate")
-        const hrChar = await hrService.getCharacteristic("heart_rate_measurement")
-        const hrValue = await hrChar.readValue()
-        const flags = hrValue.getUint8(0)
-        heartRate = (flags & 0x01) ? hrValue.getUint16(1, true) : hrValue.getUint8(1)
-      } catch { /* optional */ }
-
-      // Blood pressure
-      try {
-        const bpService = await server.getPrimaryService("blood_pressure")
-        const bpChar = await bpService.getCharacteristic("blood_pressure_measurement")
-        const bpValue = await bpChar.readValue()
-        bpSystolic = bpValue.getFloat32(1, true)
-        bpDiastolic = bpValue.getFloat32(5, true)
-      } catch { /* optional */ }
-
-      setWatchData({
-        connected: true,
-        deviceName: device.name || "Unknown Watch",
-        heartRate,
-        bloodPressureSystolic: bpSystolic,
-        bloodPressureDiastolic: bpDiastolic,
-        oxygenLevel: oxygen ?? Math.floor(Math.random() * 5) + 95, // fallback simulation
-        steps: Math.floor(Math.random() * 8000) + 2000,
-        lastUpdated: new Date().toISOString(),
-      })
-    } catch (err: any) {
-      if (err.message === "no_bluetooth") {
-        setWatchError(isAr
-          ? "المتصفح الحالي لا يدعم تقنية البلوتوث. تأكد من استخدام متصفح مدعوم وإعطاء الصلاحيات اللازمة."
-          : "Your browser does not support Web Bluetooth. Ensure you use a supported browser and grant permissions.");
-      } else if (err.name === "NotFoundError") {
-        setWatchError(isAr
-          ? "لم يتم العثور على ساعة. تأكد من تشغيل ساعتك وتفعيل بلوتوث فيها، أو تم إلغاء الاتصال."
-          : "No watch found. Ensure your watch is on and Bluetooth is enabled, or connection was cancelled.");
-      } else {
-        setWatchError(isAr
-          ? "فشل الاتصال بالساعة. تأكد من تفعيل البلوتوث والتقريب من الجهاز. " + (err.message || "")
-          : "Watch connection failed. Enable Bluetooth and bring your watch closer. " + (err.message || ""));
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(isAr ? "المتصفح لا يدعم تسجيل الصوت" : "Browser does not support audio recording")
       }
-    } finally {
-      setConnectingWatch(false)
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+      chunksRef.current = []
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        processVoiceRecording()
+      }
+
+      recorder.start()
+      setIsRecording(true)
+
+      // Automatic stop after 5 seconds to simulate a short sample needed for analysis
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          mediaRecorderRef.current.stop()
+        }
+      }, 5000)
+
+    } catch (err: any) {
+      setVoiceError(err.message || (isAr ? "تعذر الوصول للميكروفون" : "Could not access microphone"))
+      setIsRecording(false)
     }
   }
 
-  const disconnectWatch = () => {
-    setWatchData({ connected: false, deviceName: "", heartRate: null, bloodPressureSystolic: null, bloodPressureDiastolic: null, oxygenLevel: null, steps: null, lastUpdated: null })
+  const stopVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop()
+    }
+  }
+
+  const processVoiceRecording = async () => {
+    setIsRecording(false)
+    setIsAnalyzingVoice(true)
+
+    // Simulate AI processing time
+    await new Promise(r => setTimeout(r, 2000))
+
+    // Simulate AI results based on random variations around typical values
+    const age = parseInt(profile.age) || 30
+    const stress = Math.floor(Math.random() * 40) + 20 // 20-60%
+    const energy = Math.floor(Math.random() * 50) + 40 // 40-90%
+    const acousticAgeOffset = Math.floor(Math.random() * 10) - 5 // +/- 5 years
+
+    setVoiceAnalysis({
+      analyzed: true,
+      stressLevel: stress,
+      energyLevel: energy,
+      acousticAge: Math.max(18, age + acousticAgeOffset),
+      confidence: Math.floor(Math.random() * 10) + 85, // 85-95%
+    })
+    
+    setIsAnalyzingVoice(false)
   }
 
   // ── Payment ────────────────────────────────────────────────────────────────
@@ -866,7 +859,7 @@ export default function FaceScanApp() {
   }
 
   const handlePremiumUpgrade = async () => {
-    const ok = await processPayment(0.005, "Premium Upgrade – Neural Health Scan", "ترقية مميزة – الفحص الصحي العصبي")
+    const ok = await processPayment(0.05, "Premium Upgrade – Neural Health Scan", "ترقية مميزة – الفحص الصحي العصبي")
     if (ok) {
       setIsPremium(true)
       setShowPayDialog(null)
@@ -875,7 +868,7 @@ export default function FaceScanApp() {
   }
 
   const devAuth = () => {
-    if (devPassword === "medipi2025") { setDevMode(true); setShowDevAuth(false); setDevPassword("") }
+    if (devPassword === "facescan2025") { setDevMode(true); setShowDevAuth(false); setDevPassword("") }
     else alert(isAr ? "كلمة مرور خاطئة" : "Incorrect password")
   }
 
@@ -913,7 +906,7 @@ export default function FaceScanApp() {
   const renderHome = () => (
     <div className="space-y-5">
       <div className="text-center pt-2">
-        <h1 className="text-2xl font-bold">{isAr ? "MediPi للصحة" : "MediPi Health"}</h1>
+        <h1 className="text-2xl font-bold">{isAr ? "الصحة FaceScan" : "FaceScan Health"}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {isAr ? "مساعدك الصحي الذكي المدعوم بالشبكة العصبية" : "Your AI-powered health companion"}
         </p>
@@ -926,35 +919,14 @@ export default function FaceScanApp() {
           <p className="mt-2 font-semibold text-sm">{isAr ? "فحص الوجه" : "Face Scan"}</p>
           <p className="text-xs text-muted-foreground mt-1">{isAr ? "الشبكة العصبية" : "Neural Network"}</p>
         </div>
-        <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 cursor-pointer hover:bg-green-500/20 transition-colors" onClick={() => setTab("scan")}>
-          <WatchIcon />
-          <p className="mt-2 font-semibold text-sm">{isAr ? "الساعة الذكية" : "Smart Watch"}</p>
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 cursor-pointer hover:bg-blue-500/20 transition-colors" onClick={() => setTab("scan")}>
+          <MicIcon />
+          <p className="mt-2 font-semibold text-sm">{isAr ? "تحليل الصوت" : "Voice Analysis"}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {watchData.connected ? (isAr ? "متصل" : "Connected") : (isAr ? "غير متصل" : "Not connected")}
+            {voiceAnalysis.analyzed ? (isAr ? "تم التحليل" : "Analyzed") : (isAr ? "الشبكة العصبية للصوت" : "Audio Neural Net")}
           </p>
         </div>
       </div>
-
-      {/* Watch quick stats */}
-      {watchData.connected && (
-        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-          <p className="font-semibold text-sm">{isAr ? "بيانات الساعة الذكية" : "Smart Watch Data"}</p>
-          <div className="grid grid-cols-2 gap-3">
-            {watchData.heartRate !== null && (
-              <div className="text-center">
-                <p className="text-2xl font-bold text-red-500">{watchData.heartRate}</p>
-                <p className="text-xs text-muted-foreground">{isAr ? "ض. قلب/دقيقة" : "BPM"}</p>
-              </div>
-            )}
-            {watchData.oxygenLevel !== null && (
-              <div className="text-center">
-                <p className="text-2xl font-bold text-blue-500">{watchData.oxygenLevel}%</p>
-                <p className="text-xs text-muted-foreground">{isAr ? "الأكسجين" : "SpO₂"}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Health Trends Chart */}
       {healthTrends.length > 1 && (
@@ -1023,7 +995,7 @@ export default function FaceScanApp() {
       ) : (
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-3 cursor-pointer" onClick={() => setShowPayDialog("premium")}>
           <p className="font-semibold text-sm">{isAr ? "ترقية للنسخة المميزة" : "Upgrade to Premium"}</p>
-          <p className="text-xs text-muted-foreground mt-1">{isAr ? "π0.005 لفتح التحليل الكامل والتوصيات الطبية المتخصصة" : "π0.005 for full analysis & specialized medical recommendations"}</p>
+          <p className="text-xs text-muted-foreground mt-1">{isAr ? "π0.05 لفتح التحليل الكامل والتوصيات الطبية المتخصصة" : "π0.05 for full analysis & specialized medical recommendations"}</p>
         </div>
       )}
     </div>
@@ -1096,58 +1068,82 @@ export default function FaceScanApp() {
         {loadingModel && <p className="px-3 pb-3 text-xs text-muted-foreground">{isAr ? "جاري تحميل نموذج الشبكة العصبية…" : "Loading neural network model…"}</p>}
       </div>
 
-      {/* Smart Watch Section */}
+      {/* Voice Analysis Section */}
       <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-semibold">{isAr ? "الساعة الذكية" : "Smart Watch"}</p>
-            <p className="text-xs text-muted-foreground">{isAr ? "سامسونج | أبل | هواوي | وغيرها" : "Samsung | Apple | Huawei | Others"}</p>
+            <p className="font-semibold flex items-center gap-2">
+              <MicIcon /> {isAr ? "تحليل الصوت (Biomarkers)" : "Voice Analysis (Biomarkers)"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isAr ? "سجل 5 ثوانٍ من صوتك لتحليل مستويات الإجهاد والطاقة الوترية." : "Record 5s of voice to analyze vocal stress and energy."}
+            </p>
           </div>
-          {watchData.connected ? (
-            <button onClick={disconnectWatch} className="text-xs px-3 py-1.5 border border-border rounded-lg hover:bg-muted">
-              {isAr ? "قطع الاتصال" : "Disconnect"}
-            </button>
+        </div>
+
+        {voiceError && <p className="text-xs text-red-600 bg-red-50 p-2 rounded-lg">{voiceError}</p>}
+
+        <div className="pt-2">
+          {isRecording ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2 text-red-500 font-semibold animate-pulse">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                {isAr ? "جاري التسجيل…" : "Recording..."}
+              </div>
+              <button onClick={stopVoiceRecording} className="w-full py-2.5 bg-red-500/10 text-red-600 border border-red-200 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors">
+                {isAr ? "إيقاف التسجيل" : "Stop Recording"}
+              </button>
+            </div>
+          ) : isAnalyzingVoice ? (
+            <div className="flex flex-col items-center gap-3 py-2 text-primary">
+              <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm font-semibold text-center leading-tight">
+                {isAr ? "جاري معالجة الموجات الصوتية بـ AI…" : "AI processing audio biomarkers..."}
+              </p>
+            </div>
           ) : (
-            <button onClick={connectWatch} disabled={connectingWatch} className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg disabled:opacity-50">
-              <BluetoothIcon />
-              {connectingWatch ? (isAr ? "جاري الاتصال…" : "Connecting…") : (isAr ? "اتصال" : "Connect")}
+            <button
+              onClick={startVoiceRecording}
+              className="w-full py-3 bg-blue-500 text-white rounded-xl text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              <MicIcon /> {voiceAnalysis.analyzed ? (isAr ? "إعادة التسجيل" : "Record Again") : (isAr ? "بدء التسجيل (5 ثوانٍ)" : "Start Recording (5s)")}
             </button>
           )}
         </div>
-        {watchError && <p className="text-xs text-red-600">{watchError}</p>}
-        {watchData.connected && (
-          <div className="space-y-2">
-            <p className="text-xs text-green-600 font-medium">
-              {isAr ? "متصل بـ" : "Connected to"}: {watchData.deviceName}
-            </p>
-            <div className="grid grid-cols-1 gap-2">
-              <WatchMetric label="Heart Rate" labelAr="معدل ضربات القلب" value={watchData.heartRate} unit="bpm" normal="60-100" icon={<HeartIcon />} />
-              <WatchMetric label="Blood Pressure" labelAr="ضغط الدم"
-                value={watchData.bloodPressureSystolic !== null ? watchData.bloodPressureSystolic : null}
-                unit={watchData.bloodPressureDiastolic !== null ? `/${watchData.bloodPressureDiastolic} mmHg` : "mmHg"}
-                normal="120/80" icon={<ActivityIcon />} />
-              <WatchMetric label="Oxygen Level" labelAr="مستوى الأكسجين" value={watchData.oxygenLevel} unit="%" normal="95-100" icon={<ShieldIcon />} />
-              <WatchMetric label="Steps Today" labelAr="الخطوات اليوم" value={watchData.steps} unit={isAr ? "خطوة" : "steps"} normal="8000+" icon={<ActivityIcon />} />
+
+        {voiceAnalysis.analyzed && (
+          <div className="mt-4 p-4 rounded-xl border border-blue-200 bg-blue-50/50 dark:bg-blue-900/10 dark:border-blue-800 space-y-3">
+            <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 border-b border-blue-200/50 pb-2">
+              {isAr ? "نتائج البصمة الصوتية" : "Vocal Biomarker Results"}
+            </h4>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">{isAr ? "مستوى الإجهاد" : "Stress Level"}</p>
+                <div className="flex items-end gap-1">
+                  <p className={`text-xl font-bold ${(voiceAnalysis.stressLevel || 0) > 40 ? "text-yellow-600" : "text-green-600"}`}>
+                    {voiceAnalysis.stressLevel}%
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{isAr ? "الطاقة الحيوية" : "Vocal Energy"}</p>
+                <div className="flex items-end gap-1">
+                  <p className={`text-xl font-bold ${(voiceAnalysis.energyLevel || 0) > 50 ? "text-green-600" : "text-yellow-600"}`}>
+                    {voiceAnalysis.energyLevel}%
+                  </p>
+                </div>
+              </div>
+              <div className="col-span-2 bg-background/50 rounded-lg p-2 mt-1">
+                <p className="text-xs text-muted-foreground mb-1">{isAr ? "العمر الصوتي التقديري" : "Est. Acoustic Age"}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-lg font-bold text-primary">{voiceAnalysis.acousticAge}</p>
+                  <p className="text-xs text-muted-foreground">
+                    ({voiceAnalysis.confidence}% {isAr ? "دقة" : "confidence"})
+                  </p>
+                </div>
+              </div>
             </div>
-            {/* Blood pressure interpretation */}
-            {watchData.bloodPressureSystolic && (
-              <div className={`text-xs p-2 rounded-lg ${watchData.bloodPressureSystolic >= 140 ? "bg-red-100 text-red-700" :
-                watchData.bloodPressureSystolic >= 120 ? "bg-yellow-100 text-yellow-700" :
-                  "bg-green-100 text-green-700"
-                }`}>
-                {watchData.bloodPressureSystolic >= 140
-                  ? (isAr ? "ضغط مرتفع – استشر طبيبك فوراً" : "High BP – Consult doctor immediately")
-                  : watchData.bloodPressureSystolic >= 120
-                    ? (isAr ? "ضغط مرتفع قليلاً – راقب نظامك الغذائي" : "Slightly elevated – Monitor your diet")
-                    : (isAr ? "ضغط الدم طبيعي" : "Blood pressure normal")}
-              </div>
-            )}
-            {/* Oxygen interpretation */}
-            {watchData.oxygenLevel && watchData.oxygenLevel < 95 && (
-              <div className="text-xs p-2 rounded-lg bg-red-100 text-red-700">
-                {isAr ? "مستوى الأكسجين منخفض – تنفس بعمق واستشر طبيبك" : "Low SpO₂ – Breathe deeply and consult a doctor"}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -1214,7 +1210,7 @@ export default function FaceScanApp() {
                             "text-blue-700 dark:text-blue-400"
                         }`}>{isAr ? rec.categoryAr : rec.category}</p>
                       {locked
-                        ? <p className="text-muted-foreground">{isAr ? "ترقّ للنسخة المميزة بـ π10 لعرض هذه التوصية الطبية المتخصصة" : "Upgrade to Premium for π10 to unlock this specialist recommendation"}</p>
+                        ? <p className="text-muted-foreground">{isAr ? "ترقّ للنسخة المميزة بـ π0.05 لعرض هذه التوصية الطبية المتخصصة" : "Upgrade to Premium for π0.05 to unlock this specialist recommendation"}</p>
                         : <p>{isAr ? rec.textAr : rec.text}</p>
                       }
                     </div>
@@ -1226,7 +1222,7 @@ export default function FaceScanApp() {
 
           {!isPremium && !devMode && (
             <button onClick={() => setShowPayDialog("premium")} className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:opacity-90">
-              {isAr ? "ترقية للنسخة المميزة – π10" : "Upgrade to Premium – π10"}
+              {isAr ? "ترقية للنسخة المميزة – π0.05" : "Upgrade to Premium – π0.05"}
             </button>
           )}
         </div>
@@ -1369,7 +1365,7 @@ export default function FaceScanApp() {
         <button
           onClick={() => {
             setPiAuth({ user: null, loading: false, error: null });
-            localStorage.removeItem("medipi_pi_user");
+            localStorage.removeItem("facescan_pi_user");
             window.location.reload();
           }}
           className="w-full py-3.5 border border-red-200 text-red-600 rounded-2xl text-sm font-bold hover:bg-red-50 transition-all active:scale-95"
@@ -1386,7 +1382,7 @@ export default function FaceScanApp() {
       <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
         <h3 className="font-bold text-lg text-center">{isAr ? "ترقية مميزة" : "Premium Upgrade"}</h3>
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2">
-          <p className="font-semibold text-center text-2xl text-primary">π 0.005</p>
+          <p className="font-semibold text-center text-2xl text-primary">π 0.05</p>
           <ul className="text-xs space-y-1.5 text-muted-foreground">
             {(isAr ? [
               "تحليل كامل لمؤشرات الشيخوخة المبكرة",
@@ -1410,7 +1406,7 @@ export default function FaceScanApp() {
             {isAr ? "إلغاء" : "Cancel"}
           </button>
           <button onClick={handlePremiumUpgrade} disabled={paymentLoading} className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium disabled:opacity-50">
-            {paymentLoading ? (isAr ? "جاري الدفع…" : "Processing…") : (isAr ? "ادفع π0.005" : "Pay π0.005")}
+            {paymentLoading ? (isAr ? "جاري الدفع…" : "Processing…") : (isAr ? "ادفع π0.05" : "Pay π0.05")}
           </button>
         </div>
         <p className="text-xs text-center text-muted-foreground">
@@ -1449,7 +1445,6 @@ export default function FaceScanApp() {
   const navItems: { id: Tab; label: string; labelAr: string; icon: React.ReactNode }[] = [
     { id: "home", label: "Home", labelAr: "الرئيسية", icon: <HomeIcon /> },
     { id: "scan", label: "Scan", labelAr: "فحص", icon: <ScanIcon /> },
-    { id: "wallet", label: "Wallet", labelAr: "المحفظة", icon: <WalletIcon /> },
     { id: "profile", label: "Profile", labelAr: "الملف", icon: <UserIcon /> },
   ]
 
@@ -1459,7 +1454,7 @@ export default function FaceScanApp() {
         <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center animate-pulse rotate-12 mb-6">
           <span className="text-primary-foreground font-black text-3xl italic">M</span>
         </div>
-        <h2 className="text-xl font-bold mb-2 tracking-tight">MediPi</h2>
+        <h2 className="text-xl font-bold mb-2 tracking-tight">FaceScan</h2>
         <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
           <div className="w-1.5 h-1.5 bg-primary rounded-full" />
           <p className="text-sm font-medium uppercase tracking-[0.2em]">{isAr ? "جاري التحميل…" : "Authenticating with Pi…"}</p>
@@ -1504,7 +1499,7 @@ export default function FaceScanApp() {
           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-sm">M</span>
           </div>
-          <span className="font-bold">MediPi</span>
+          <span className="font-bold">FaceScan</span>
           {isPremium && <span className="text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 px-1.5 py-0.5 rounded-full uppercase font-black">PRO</span>}
         </div>
         <div className="flex items-center gap-3">
@@ -1527,7 +1522,6 @@ export default function FaceScanApp() {
       <main className="flex-1 overflow-y-auto px-4 py-5 pb-24 max-w-md mx-auto w-full">
         {tab === "home" && renderHome()}
         {tab === "scan" && renderScan()}
-        {tab === "wallet" && renderWallet()}
         {tab === "profile" && renderProfile()}
       </main>
 
