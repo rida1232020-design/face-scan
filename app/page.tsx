@@ -795,23 +795,9 @@ export default function FaceScanApp() {
         lastUpdated: new Date().toISOString(),
       })
     } catch (err: any) {
-      if (err.message === "no_bluetooth" || err.name === "NotFoundError") {
-        // Simulate watch data for demo/development
-        setWatchData({
-          connected: true,
-          deviceName: "Demo Watch (Simulated)",
-          heartRate: Math.floor(Math.random() * 30) + 60,
-          bloodPressureSystolic: Math.floor(Math.random() * 30) + 110,
-          bloodPressureDiastolic: Math.floor(Math.random() * 20) + 70,
-          oxygenLevel: Math.floor(Math.random() * 4) + 96,
-          steps: Math.floor(Math.random() * 8000) + 1500,
-          lastUpdated: new Date().toISOString(),
-        })
-      } else {
-        setWatchError(isAr
-          ? "فشل الاتصال بالساعة. تأكد من تفعيل البلوتوث والتقريب من الجهاز."
-          : "Watch connection failed. Enable Bluetooth and bring your watch closer.")
-      }
+      setWatchError(isAr
+        ? "فشل الاتصال بالساعة. تأكد من تفعيل البلوتوث والتقريب من الجهاز."
+        : "Watch connection failed. Enable Bluetooth and bring your watch closer.")
     } finally {
       setConnectingWatch(false)
     }
@@ -1333,120 +1319,7 @@ export default function FaceScanApp() {
     <div className="space-y-5">
       <h2 className="text-xl font-bold text-center">{isAr ? "الملف الشخصي" : "Profile"}</h2>
 
-      <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
-        <p className="font-semibold">{isAr ? "البيانات الشخصية" : "Personal Information"}</p>
-        {[
-          { key: "fullName", label: "Full Name", labelAr: "الاسم الكامل", type: "text" },
-          { key: "email", label: "Email", labelAr: "البريد الإلكتروني", type: "email" },
-          { key: "phone", label: "Phone", labelAr: "رقم الهاتف", type: "tel" },
-          { key: "age", label: "Age", labelAr: "العمر", type: "number" },
-          { key: "dob", label: "Date of Birth", labelAr: "تاريخ الميلاد", type: "date" },
-          { key: "address", label: "Address", labelAr: "العنوان", type: "text" },
-        ].map(f => (
-          <div key={f.key}>
-            <label className="text-xs text-muted-foreground block mb-1">{isAr ? f.labelAr : f.label}</label>
-            <input
-              type={f.type}
-              value={(profile as any)[f.key]}
-              onChange={e => setProfile(p => ({ ...p, [f.key]: e.target.value }))}
-              className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder={isAr ? f.labelAr : f.label}
-            />
-          </div>
-        ))}
 
-        <div>
-          <label className="text-xs text-muted-foreground block mb-1">{isAr ? "الجنس" : "Gender"}</label>
-          <select
-            value={profile.gender}
-            onChange={e => setProfile(p => ({ ...p, gender: e.target.value }))}
-            className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">{isAr ? "اختر" : "Select"}</option>
-            <option value="male">{isAr ? "ذكر" : "Male"}</option>
-            <option value="female">{isAr ? "أنثى" : "Female"}</option>
-          </select>
-        </div>
-
-        <button
-          onClick={async () => {
-            if (!dbUserId) {
-              if (piAuth.user) {
-                setSavingToDB(true)
-                try {
-                  const dbUser = await upsertUser(piAuth.user.uid, piAuth.user.username)
-                  if (dbUser) {
-                    setDbUserId(dbUser.id)
-                    // Continue with save using the new ID
-                    const savedLong = await upsertProfile(dbUser.id, {
-                      full_name: profile.fullName,
-                      email: profile.email,
-                      phone: profile.phone,
-                      age: parseInt(profile.age) || 30,
-                      dob: profile.dob,
-                      gender: profile.gender,
-                      address: profile.address,
-                    })
-                    if (savedLong) {
-                      setProfileSaved(true)
-                      setTimeout(() => setProfileSaved(false), 3000)
-                      return
-                    }
-                  } else {
-                    alert(isAr ? "فشل الاتصال بقاعدة البيانات. تأكد من إعداد Supabase بشكل صحيح." : "Failed to connect to database. Check Supabase configuration.")
-                  }
-                } catch (e: any) {
-                  console.error("Save error:", e)
-                  if (e.message.includes("Supabase is not configured")) {
-                    alert(isAr ? "قاعدة البيانات غير مهيأة. يرجى ملء بيانات Supabase في ملف .env.local" : "Supabase is not configured. Please fill in .env.local values.")
-                  } else if (e.message === "SERVER_AUTH_FAILED") {
-                    alert(isAr ? "فشل التحقق من الهوية مع الخادم. تأكد من صحة PI_API_KEY في ملف .env.local" : "Server verification failed. Check your PI_API_KEY in .env.local.")
-                  } else {
-                    alert((isAr ? "خطأ في قاعدة البيانات: " : "DB Error: ") + (e.message || e))
-                  }
-                } finally {
-                  setSavingToDB(false)
-                }
-                return
-              }
-              const errMsg = piAuth.error ? (isAr ? `خطأ في الهوية: ${piAuth.error}` : `Auth Error: ${piAuth.error}`) : (isAr ? "لم يتم التعرف على هوية المستخدم بعد. جرب الانتظار أو إعادة التحميل." : "User identity not found yet. Try waiting or reloading.")
-              alert(errMsg)
-              return
-            }
-            setSavingToDB(true)
-            try {
-              const res = await upsertProfile(dbUserId, {
-                full_name: profile.fullName,
-                email: profile.email,
-                phone: profile.phone,
-                age: parseInt(profile.age) || 30,
-                dob: profile.dob,
-                gender: profile.gender,
-                address: profile.address,
-              })
-              if (res) {
-                setProfileSaved(true)
-                setTimeout(() => setProfileSaved(false), 3000)
-              } else {
-                alert(isAr ? "حدث خطأ أثناء حفظ البيانات." : "Error saving data.")
-              }
-            } catch (err: any) {
-              console.error("Profile save error:", err)
-              if (err.message.includes("Supabase is not configured")) {
-                alert(isAr ? "قاعدة البيانات غير مهيأة. يرجى ملء بيانات Supabase في ملف .env.local" : "Supabase is not configured. Please fill in .env.local values.")
-              } else {
-                alert((isAr ? "فشل حفظ الملف الشخصي: " : "Failed to save profile: ") + (err.message || err))
-              }
-            } finally {
-              setSavingToDB(false)
-            }
-          }}
-          disabled={savingToDB}
-          className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {savingToDB ? (isAr ? "جاري الحفظ…" : "Saving…") : (profileSaved ? (isAr ? "تم الحفظ!" : "Saved!") : (isAr ? "حفظ البيانات" : "Save Profile"))}
-        </button>
-      </div>
 
       {/* Pi Profile Info */}
       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center gap-4">
