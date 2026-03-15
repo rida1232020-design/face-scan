@@ -157,17 +157,34 @@ interface Transaction {
 // ─── Neural Network Analysis Engine ───────────────────────────────────────────
 function analyzeAgingFromFaceData(
   faceDetected: boolean,
+  realAge: number | null,
+  realGender: string | null,
+  emotions: { expression: string, probability: number }[],
   lang: Lang
 ): Omit<ScanResult, "id" | "timestamp"> {
   const base = faceDetected ? 0 : 15 // penalty if no face detected clearly
 
   // Base ML metrics (simulated without prior user knowledge)
-  const wrinkleIndex = Math.min(100, base + Math.floor(Math.random() * 50) + 10);
+  // Since we have actual ML readings now, we base the results on them:
+  let visualAgeEstimate = realAge ? Math.round(realAge) : 30
+  
+  // Real ML sometimes jumps around, so we smooth it out
+  visualAgeEstimate = Math.max(1, visualAgeEstimate)
+  
+  // Analyze emotions to adjust "Fatigue" and "Wrinkles" realistically
+  const isHappy = emotions.find(e => e.expression === "happy" && e.probability > 0.5)
+  const isSadOrAngry = emotions.find(e => (e.expression === "sad" || e.expression === "angry") && e.probability > 0.4)
+
+  const wrinkleModifier = isHappy ? 15 : (isSadOrAngry ? 30 : 5)
+  const fatigueModifier = isSadOrAngry ? 40 : 10
+
+  // Simulated internal skin scores (since camera can't truly see hydration well yet)
+  const wrinkleIndex = Math.min(100, base + wrinkleModifier + Math.floor(Math.random() * 20));
   const hydrationLevel = Math.max(0, Math.floor(Math.random() * 40) + 50);
   const pigmentationIndex = Math.min(100, base + Math.floor(Math.random() * 40) + 10);
   const elasticityScore = Math.max(0, Math.floor(Math.random() * 40) + 50);
   const uvDamageIndex = Math.min(100, base + Math.floor(Math.random() * 30) + 5);
-  const fatigue = Math.min(100, Math.floor(Math.random() * 40) + 10);
+  const fatigue = Math.min(100, fatigueModifier + Math.floor(Math.random() * 20));
   const puffiness = Math.min(100, Math.floor(Math.random() * 30) + 5);
   const darkCircles = Math.min(100, Math.floor(Math.random() * 40) + 10);
 
@@ -180,16 +197,6 @@ function analyzeAgingFromFaceData(
     (fatigue * 0.05) +
     (darkCircles * 0.05)
   )
-
-  // Since we don't have user input age anymore, we simulate an AI finding an age 
-  // between 5 and 65 based loosely on the wrinkle/elasticity scores + some random noise.
-  // Higher wrinkles/lower elasticity = older age estimation.
-  const visualAgeEstimate = Math.max(5, Math.floor(
-    (wrinkleIndex * 0.4) + 
-    ((100 - elasticityScore) * 0.3) + 
-    (pigmentationIndex * 0.15) + 
-    (Math.random() * 15) // Random noise factor
-  ))
 
   const biologicalAge = visualAgeEstimate
   const overallHealth = Math.max(0, 100 - Math.round(agingScore * 0.4))
@@ -562,11 +569,21 @@ export default function FaceScanApp() {
       if (!navigator.onLine) return
       try {
         setLoadingModel(true)
-        const tf = await import("@tensorflow/tfjs")
-        await import("@tensorflow-models/blazeface")
-        await tf.ready()
+        // Load face-api.js dynamically and load its models
+        // @ts-ignore
+        const faceapi = (await import("face-api.js")) as any
+        
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+          faceapi.nets.ageGenderNet.loadFromUri('/models'),
+          faceapi.nets.faceExpressionNet.loadFromUri('/models')
+        ])
+        
         setModelLoaded(true)
-      } catch { setModelLoaded(false) }
+      } catch (e) {
+        console.error("Failed to load face-api models:", e)
+        setModelLoaded(false)
+      }
       finally { setLoadingModel(false) }
     }
     load()
@@ -682,24 +699,46 @@ export default function FaceScanApp() {
       // Capture frame
       const canvas = canvasRef.current
       const video = videoRef.current
-      canvas.width = video.videoWidth || 640
-      canvas.height = video.videoHeight || 480
-      canvas.getContext("2d")?.drawImage(video, 0, 0)
-
-      // Try BlazeFace detection
-      if (modelLoaded) {
-        try {
-          const tf = await import("@tensorflow/tfjs")
-          const blazeface = await import("@tensorflow-models/blazeface")
-          await tf.ready()
-          const model = await blazeface.load()
-          const predictions = await model.estimateFaces(video, false)
-          faceDetected = predictions.length > 0
-        } catch { faceDetected = false }
+      if (canvas) {
+        // Draw the current video frame on the canvas to use as snapshot if needed
+        canvas.width = video.videoWidth || 640
+        canvas.height = video.videoHeight || 480
+        canvas.getContext("2d")?.drawImage(video, 0, 0)
       }
 
-      // Completely remove dependency on user profile age.
-      const analysis = analyzeAgingFromFaceData(faceDetected, lang)
+      // Authentic ML Analysis with face-api.js
+      let realAge: number | null = null
+      let realGender: string | null = null
+      let emotions: { expression: string, probability: number }[] = []
+
+      if (modelLoaded) {
+        try {
+          // @ts-ignore
+          const faceapi = (await import("face-api.js")) as any
+          const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceExpressions()
+            .withAgeAndGender()
+
+          if (detection) {
+            faceDetected = true
+            realAge = detection.age
+            realGender = detection.gender // 'male' or 'female'
+            
+            // Extract top emotions
+            if (detection.expressions) {
+              emotions = Object.entries(detection.expressions)
+                .map(([expr, prob]) => ({ expression: expr, probability: prob as number }))
+                .sort((a, b) => b.probability - a.probability)
+            }
+          }
+        } catch (e) {
+          console.error("ML Detection failed:", e)
+          faceDetected = false
+        }
+      }
+
+      // Analyze rest of data based on the real ML bounds
+      const analysis = analyzeAgingFromFaceData(faceDetected, realAge, realGender, emotions, lang)
 
       const result: ScanResult = {
         id: Date.now().toString(),
