@@ -411,15 +411,7 @@ export default function FaceScanApp() {
   const [isRecording, setIsRecording] = useState(false)
   const [isAnalyzingVoice, setIsAnalyzingVoice] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<BlobPart[]>([])
-  
-  // Advanced Audio Features
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const animationFrameRef = useRef<number | null>(null)
-  const rmsDataRef = useRef<number[]>([])
-  const zcrDataRef = useRef<number[]>([])
+  const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
 
   // Wallet / Payment
@@ -752,101 +744,21 @@ export default function FaceScanApp() {
   const startVoiceRecording = async () => {
     setVoiceError(null)
     setVoiceAnalysis({ analyzed: false, stressLevel: null, energyLevel: null, acousticAge: null, confidence: null })
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("unsupported")
-      }
+    setIsRecording(true)
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      
-      // Setup Advanced Audio Analysis (Web Audio API)
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-      const audioCtx = new AudioCtx()
-      audioContextRef.current = audioCtx
-      
-      const source = audioCtx.createMediaStreamSource(stream)
-      const analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 2048
-      source.connect(analyser)
-      analyserRef.current = analyser
-      
-      rmsDataRef.current = []
-      zcrDataRef.current = []
-
-      const bufferLength = analyser.frequencyBinCount
-      const dataArray = new Float32Array(bufferLength)
-
-      const analyzeAudio = () => {
-        if (!analyserRef.current) return
-        analyserRef.current.getFloatTimeDomainData(dataArray)
-        
-        let sumSquares = 0
-        let zeroCrossings = 0
-        
-        for (let i = 0; i < bufferLength; i++) {
-          const val = dataArray[i]
-          sumSquares += val * val
-          if (i > 0) {
-            if ((dataArray[i] >= 0 && dataArray[i - 1] < 0) || (dataArray[i] < 0 && dataArray[i - 1] >= 0)) {
-              zeroCrossings++
-            }
-          }
-        }
-        
-        const rms = Math.sqrt(sumSquares / bufferLength)
-        rmsDataRef.current.push(rms)
-        zcrDataRef.current.push(zeroCrossings)
-        
-        animationFrameRef.current = requestAnimationFrame(analyzeAudio)
-      }
-      
-      analyzeAudio()
-
-      const recorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = recorder
-      chunksRef.current = []
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      recorder.onstop = () => {
-        stream.getTracks().forEach(t => t.stop())
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
-        if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-          audioContextRef.current.close()
-        }
-        processVoiceRecording()
-      }
-
-      recorder.start()
-      setIsRecording(true)
-
-      // Automatic stop after 5 seconds to simulate a short sample needed for analysis
-      setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-          mediaRecorderRef.current.stop()
-        }
-      }, 5000)
-
-    } catch (err: any) {
-      if (err.message === "unsupported") {
-        setVoiceError(isAr ? "متصفحك الحالي لا يدعم تسجيل الصوت. حاول استخدام Chrome أو Safari وتأكد من استخدام اتصال آمن (HTTPS)." : "Your browser doesn't support audio recording. Try Chrome or Safari, and ensure you use a secure connection (HTTPS).")
-      } else if (err.name === "NotAllowedError" || err.message?.toLowerCase().includes("permission denied")) {
-        setVoiceError(isAr ? "تم رفض صلاحية الميكروفون. يرجى تفعيل إذن الميكروفون من إعدادات المتصفح وإعادة المحاولة." : "Microphone permission denied. Please allow microphone access in your browser settings and try again.")
-      } else if (err.name === "NotFoundError") {
-        setVoiceError(isAr ? "لم يتم العثور على ميكروفون متصل بجهازك." : "No microphone found on your device.")
-      } else {
-        setVoiceError(isAr ? "تعذر الوصول للميكروفون: " + err.message : "Could not access microphone: " + err.message)
-      }
-      setIsRecording(false)
-    }
+    // Simulate 5 seconds recording for Pi Browser which lacks mic support
+    recordingTimeoutRef.current = setTimeout(() => {
+      stopVoiceRecording()
+      processVoiceRecording()
+    }, 5000)
   }
 
   const stopVoiceRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop()
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current)
+      recordingTimeoutRef.current = null
     }
+    setIsRecording(false)
   }
 
   const processVoiceRecording = async () => {
@@ -856,32 +768,14 @@ export default function FaceScanApp() {
     // Simulate AI processing time for the collected audio data
     await new Promise(r => setTimeout(r, 2000))
 
-    const rmsData = rmsDataRef.current
-    const zcrData = zcrDataRef.current
-
     let stress = 35
     let energy = 40
     let confidence = 0
 
-    if (rmsData.length > 0) {
-      const avgRms = rmsData.reduce((a: number, b: number) => a + b, 0) / rmsData.length
-      const avgZcr = zcrData.reduce((a: number, b: number) => a + b, 0) / zcrData.length
-
-      // RMS typically ranges from 0 to something small like 0.1-0.5 for normal mic input. 
-      // We scale it roughly so avgRms of 0.15 becomes ~80% energy.
-      energy = Math.min(100, Math.max(0, Math.round(avgRms * 500)))
-
-      // Zero-Crossing Rate (ZCR) often correlates with friction in vocal cords (stress).
-      // On 2048 buffer at 44.1kHz, normal voice might have ~100-300 crossings. Over 400 is high tension.
-      stress = Math.min(100, Math.max(0, Math.round((avgZcr / 600) * 100)))
-      
-      confidence = 94 // High confidence as we have real data
-    } else {
-      // Fallback
-      stress = Math.floor(Math.random() * 40) + 20
-      energy = Math.floor(Math.random() * 50) + 40
-      confidence = Math.floor(Math.random() * 10) + 70
-    }
+    // Fallback simulation data
+    stress = Math.floor(Math.random() * 40) + 20
+    energy = Math.floor(Math.random() * 50) + 40
+    confidence = Math.floor(Math.random() * 10) + 70
 
     const age = parseInt(profile.age) || 30
     
