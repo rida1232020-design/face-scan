@@ -161,7 +161,26 @@ function analyzeAgingFromFaceData(
 ): Omit<ScanResult, "id" | "timestamp"> {
   const base = faceDetected ? 0 : 15 // penalty if no face detected clearly
 
-  // Simulate neural network pixel analysis with tighter constraints based on actual age
+  // Base ML metrics (simulated without prior user knowledge)
+  const wrinkleIndex = Math.min(100, base + Math.floor(Math.random() * 50) + 10);
+  const hydrationLevel = Math.max(0, Math.floor(Math.random() * 40) + 50);
+  const pigmentationIndex = Math.min(100, base + Math.floor(Math.random() * 40) + 10);
+  const elasticityScore = Math.max(0, Math.floor(Math.random() * 40) + 50);
+  const uvDamageIndex = Math.min(100, base + Math.floor(Math.random() * 30) + 5);
+  const fatigue = Math.min(100, Math.floor(Math.random() * 40) + 10);
+  const puffiness = Math.min(100, Math.floor(Math.random() * 30) + 5);
+  const darkCircles = Math.min(100, Math.floor(Math.random() * 40) + 10);
+
+  const agingScore = Math.round(
+    (wrinkleIndex * 0.30) +
+    ((100 - hydrationLevel) * 0.15) +
+    (pigmentationIndex * 0.15) +
+    ((100 - elasticityScore) * 0.20) +
+    (uvDamageIndex * 0.10) +
+    (fatigue * 0.05) +
+    (darkCircles * 0.05)
+  )
+
   // Since we don't have user input age anymore, we simulate an AI finding an age 
   // between 5 and 65 based loosely on the wrinkle/elasticity scores + some random noise.
   // Higher wrinkles/lower elasticity = older age estimation.
