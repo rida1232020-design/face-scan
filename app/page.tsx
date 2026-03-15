@@ -795,9 +795,19 @@ export default function FaceScanApp() {
         lastUpdated: new Date().toISOString(),
       })
     } catch (err: any) {
-      setWatchError(isAr
-        ? "فشل الاتصال بالساعة. تأكد من تفعيل البلوتوث والتقريب من الجهاز."
-        : "Watch connection failed. Enable Bluetooth and bring your watch closer.")
+      if (err.message === "no_bluetooth") {
+        setWatchError(isAr
+          ? "المتصفح الحالي لا يدعم تقنية البلوتوث. تأكد من استخدام متصفح مدعوم وإعطاء الصلاحيات اللازمة."
+          : "Your browser does not support Web Bluetooth. Ensure you use a supported browser and grant permissions.");
+      } else if (err.name === "NotFoundError") {
+        setWatchError(isAr
+          ? "لم يتم العثور على ساعة. تأكد من تشغيل ساعتك وتفعيل بلوتوث فيها، أو تم إلغاء الاتصال."
+          : "No watch found. Ensure your watch is on and Bluetooth is enabled, or connection was cancelled.");
+      } else {
+        setWatchError(isAr
+          ? "فشل الاتصال بالساعة. تأكد من تفعيل البلوتوث والتقريب من الجهاز. " + (err.message || "")
+          : "Watch connection failed. Enable Bluetooth and bring your watch closer. " + (err.message || ""));
+      }
     } finally {
       setConnectingWatch(false)
     }
