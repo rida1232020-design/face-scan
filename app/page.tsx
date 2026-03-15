@@ -162,17 +162,20 @@ function analyzeAgingFromFaceData(
 ): Omit<ScanResult, "id" | "timestamp"> {
   const base = faceDetected ? 0 : 15 // penalty if no face detected clearly
 
-  // Simulate neural network pixel analysis
-  const wrinkleIndex = Math.min(100, base + Math.floor(Math.random() * 35) + 10)
-  const hydrationLevel = Math.max(0, Math.floor(Math.random() * 40) + 50)
-  const pigmentationIndex = Math.min(100, base + Math.floor(Math.random() * 30) + 10)
-  const elasticityScore = Math.max(0, Math.floor(Math.random() * 35) + 55)
-  const uvDamageIndex = Math.min(100, base + Math.floor(Math.random() * 30) + 5)
-  const fatigue = Math.min(100, Math.floor(Math.random() * 50) + 10)
-  const puffiness = Math.min(100, Math.floor(Math.random() * 35) + 5)
-  const darkCircles = Math.min(100, Math.floor(Math.random() * 45) + 10)
+  // Simulate neural network pixel analysis with tighter constraints based on actual age
+  // E.g., a 10 year old should not randomly get a 90/100 wrinkle index
+  const ageFactor = Math.min(1, Math.max(0, (userAge - 15) / 50)) // 0 for kids, 1 for elderly
 
-  // Biological age estimate
+  const wrinkleIndex = Math.min(100, base + Math.floor(Math.random() * (15 + 20 * ageFactor)) + (5 * ageFactor))
+  const hydrationLevel = Math.max(0, Math.floor(Math.random() * 20) + 70 - (10 * ageFactor))
+  const pigmentationIndex = Math.min(100, base + Math.floor(Math.random() * (15 + 15 * ageFactor)) + 5)
+  const elasticityScore = Math.max(0, Math.floor(Math.random() * 20) + 75 - (15 * ageFactor))
+  const uvDamageIndex = Math.min(100, base + Math.floor(Math.random() * (15 + 15 * ageFactor)) + 5)
+  const fatigue = Math.min(100, Math.floor(Math.random() * 30) + 10)
+  const puffiness = Math.min(100, Math.floor(Math.random() * 25) + 5)
+  const darkCircles = Math.min(100, Math.floor(Math.random() * 30) + 10)
+
+  // Biological age estimate - using a much smaller weighted deviation
   const agingScore = Math.round(
     (wrinkleIndex * 0.30) +
     ((100 - hydrationLevel) * 0.15) +
@@ -182,8 +185,15 @@ function analyzeAgingFromFaceData(
     (fatigue * 0.05) +
     (darkCircles * 0.05)
   )
-  const biologicalAge = Math.max(18, Math.round(userAge + (agingScore - 40) * 0.3))
-  const overallHealth = Math.max(0, 100 - Math.round(agingScore * 0.6))
+  
+  // Deviation is at most +/- 3 years for children, and +/- 6 years for adults
+  const maxDeviation = Math.max(2, userAge * 0.15) 
+  const ageOffset = (agingScore - 30) * 0.1 // Scaled down offset
+  const clampedOffset = Math.max(-maxDeviation, Math.min(maxDeviation, ageOffset))
+
+  // Allow children's biological age prediction to go down to 1 year old, not just clamped at 18
+  const biologicalAge = Math.max(1, Math.round(userAge + clampedOffset))
+  const overallHealth = Math.max(0, 100 - Math.round(agingScore * 0.4))
 
   // Aging Indicators
   const agingIndicators: AgingIndicator[] = [
@@ -780,13 +790,18 @@ export default function FaceScanApp() {
     const age = parseInt(profile.age) || 30
     
     // Acoustic Age derived from energy and stress. Overly stressed/low energy voices sound older.
-    const ageModifier = (stress > 60 ? 4 : 0) - (energy > 70 ? 3 : 0)
+    const maxDeviation = Math.max(2, age * 0.15)
+    let ageModifier = (stress > 60 ? 4 : 0) - (energy > 70 ? 3 : 0)
+    
+    // Clamp the modifier to prevent extreme age jumps (especially for children)
+    ageModifier = Math.max(-maxDeviation, Math.min(maxDeviation, ageModifier))
 
     setVoiceAnalysis({
       analyzed: true,
       stressLevel: stress,
       energyLevel: Math.max(10, energy), // Ensure at least some energy is shown
-      acousticAge: Math.max(18, age + ageModifier),
+      // Allow children to have realistic ages, don't clamp to 18
+      acousticAge: Math.max(1, Math.round(age + ageModifier)),
       confidence: confidence,
     })
     
