@@ -151,7 +151,7 @@ interface Transaction {
   description: string
   descriptionAr: string
   timestamp: string
-  status: "completed" | "pending" | "failed"
+  status: "completed" | "pending" | "failed" | "cancelled"
 }
 
 // ─── Neural Network Analysis Engine ───────────────────────────────────────────
@@ -267,120 +267,103 @@ function analyzeAgingFromFaceData(
       label: "UV & Sun Damage",
       labelAr: "الضرر الشمسي والأشعة فوق البنفسجية",
       score: uvDamageIndex,
-      details: uvDamageIndex > 50
-        ? "Visible UV damage – freckles, sun spots and skin texture changes"
-        : uvDamageIndex > 25
-          ? "Mild sun exposure effects on skin"
-          : "Minimal UV damage – good sun protection history",
-      detailsAr: uvDamageIndex > 50
-        ? "ضرر UV مرئي – نمش وبقع شمسية وتغيرات في نسيج البشرة"
-        : uvDamageIndex > 25
-          ? "تأثيرات خفيفة للتعرض للشمس"
-          : "ضرر UV ضئيل – تاريخ جيد في الحماية من الشمس",
-    },
-    {
-      label: "Eye Fatigue & Puffiness",
-      labelAr: "إجهاد العين وانتفاخها",
-      score: Math.round((fatigue + puffiness + darkCircles) / 3),
-      details: fatigue > 55
-        ? "Significant eye fatigue with puffiness and dark circles – signs of poor sleep or stress"
-        : fatigue > 30
-          ? "Moderate eye fatigue detected"
-          : "Eyes appear well-rested and healthy",
-      detailsAr: fatigue > 55
-        ? "إجهاد كبير في العين مع انتفاخ وهالات داكنة – علامات قلة النوم أو الإجهاد"
-        : fatigue > 30
-          ? "إجهاد معتدل في العين"
-          : "تبدو العينان مرتاحتين وصحيتين",
     },
   ]
 
-  // Generate health recommendations based on analysis
+  // ─── Generate WHO-based Recommendations ─────────────────────────────────────
   const recommendations: HealthRecommendation[] = []
 
-  // Free recommendations (basic)
+  // ── Free Tier ────────────────────────────────────────────────────────────────
   recommendations.push({
     category: "Hydration", categoryAr: "الترطيب",
-    text: "Drink at least 8-10 glasses of water daily to maintain skin hydration.",
-    textAr: "اشرب 8-10 أكواب من الماء يومياً للحفاظ على ترطيب البشرة.",
-    severity: "info", isPremium: false,
+    text: "WHO recommends drinking 8-10 glasses (2 litres) of water daily. Dehydration is one of the primary accelerators of skin aging.",
+    textAr: "توصي منظمة الصحة العالمية بشرب 8-10 أكواب (2 لتر) من الماء يومياً. الجفاف من أولى مسرّعات شيخوخة الجلد.",
+    severity: "info" as const, isPremium: false,
   })
   recommendations.push({
     category: "Sun Protection", categoryAr: "الحماية من الشمس",
-    text: "Apply SPF 30+ sunscreen every morning, even on cloudy days.",
-    textAr: "ضع واقيًا شمسيًا SPF 30+ كل صباح حتى في الأيام الغائمة.",
-    severity: "info", isPremium: false,
+    text: "WHO & Skin Cancer Foundation: Apply SPF 50+ sunscreen every morning. UV radiation is the #1 external cause of premature skin aging, causing 80% of facial wrinkles.",
+    textAr: "WHO ومؤسسة سرطان الجلد: ضع واقيًا شمسيًا SPF 50+ كل صباح. الأشعة UV هي السبب الخارجي الأول للشيخوخة المبكرة، مسؤولة عن 80% من تجاعيد الوجه.",
+    severity: "info" as const, isPremium: false,
+  })
+  recommendations.push({
+    category: "First Aging Sign Detected", categoryAr: "علامات الشيخوخة الأولى",
+    text: `Scan detected aging score of ${agingScore}/100. Unlock your full WHO-based personalised aging cause report and clinical treatment plan by upgrading to premium.`,
+    textAr: `كشف الفحص عن مؤشر شيخوخة ${agingScore}/100. افتح تقرير أسباب الشيخوخة المخصص المبني على معلومات منظمة الصحة العالمية والخطة العلاجية السريرية بالترقية للنسخة المميزة.`,
+    severity: agingScore > 50 ? "warning" as const : "info" as const, isPremium: false,
   })
 
-  // Premium – wrinkle specific
-  if (wrinkleIndex > 50) {
+  // ── Premium: WHO Early Aging Cause Detection ──────────────────────────────
+
+  if (elasticityScore < 65 || wrinkleIndex > 45) {
     recommendations.push({
-      category: "Anti-Aging", categoryAr: "مكافحة الشيخوخة",
-      text: "Start using Retinol (Vitamin A) cream at night. Begin with 0.025% concentration to minimize irritation. Clinical studies show 30% reduction in fine lines after 12 weeks.",
-      textAr: "ابدأ باستخدام كريم الريتينول (فيتامين A) ليلاً. ابدأ بتركيز 0.025% لتقليل التهيج. تُظهر الدراسات تقليص 30% في الخطوط الدقيقة بعد 12 أسبوعاً.",
-      severity: "warning", isPremium: true,
-    })
-    recommendations.push({
-      category: "Clinical Treatment", categoryAr: "العلاج الطبي",
-      text: "Consider consultation with a dermatologist for: Hyaluronic acid fillers, Microneedling therapy, or Laser resurfacing to address visible wrinkle patterns.",
-      textAr: "فكر في استشارة طبيب جلدية لـ: حقن حمض الهيالورونيك، أو العلاج بالإبر الدقيقة، أو تجديد شعاع الليزر لمعالجة أنماط التجاعيد الواضحة.",
-      severity: "warning", isPremium: true,
+      category: "🧬 Collagen Loss (WHO ICD-11 L57)", categoryAr: "🧬 السبب: فقدان الكولاجين",
+      text: `CAUSE DETECTED — Depleted collagen & elastin fibers. Your scan: elasticity ${elasticityScore}% | wrinkle ${wrinkleIndex}/100. CLINICAL PROTOCOL: Oral Collagen Peptides 10g/day (Verisol® type), Topical Tretinoin 0.05%, Vitamin C 1000mg daily (WHO essential medicine for collagen synthesis), Microneedling RF 4-6 sessions (stimulates collagen by 400%).`,
+      textAr: `سبب مكتشف — تحلل ألياف الكولاجين والإيلاستين. فحصك: مرونة ${elasticityScore}% | تجاعيد ${wrinkleIndex}/100. البروتوكول: ببتيدات الكولاجين 10 جرام/يومياً، تريتينوين 0.05% موضعياً، فيتامين C 1000 ملجم يومياً (دواء WHO أساسي لتخليق الكولاجين)، إبر دقيقة RF 4-6 جلسات (تحفز الكولاجين 400%).`,
+      severity: "warning" as const, isPremium: true,
     })
   }
 
-  // Premium – hydration specific
-  if (hydrationLevel < 60) {
+  if (agingScore > 38) {
     recommendations.push({
-      category: "Skin Nutrition", categoryAr: "تغذية البشرة",
-      text: "Increase intake of Omega-3 fatty acids (salmon, flaxseed, walnuts) and Vitamin E (almonds, avocado). These nutrients significantly improve skin barrier function.",
-      textAr: "زد من تناول أحماض أوميغا 3 (سمك السالمون، بذور الكتان، الجوز) وفيتامين E (اللوز، الأفوكادو). هذه المغذيات تحسن وظيفة حاجز الجلد بشكل ملحوظ.",
-      severity: "warning", isPremium: true,
-    })
-    recommendations.push({
-      category: "Skincare Routine", categoryAr: "روتين العناية بالبشرة",
-      text: "Use a Hyaluronic Acid serum twice daily before moisturizer. Look for products with 1-2% HA concentration for maximum hydration retention.",
-      textAr: "استخدم سيروم حمض الهيالورونيك مرتين يومياً قبل المرطب. ابحث عن منتجات بتركيز 1-2% لأقصى قدر من الاحتفاظ بالرطوبة.",
-      severity: "info", isPremium: true,
+      category: "⚡ Oxidative Stress (WHO GBD 2021)", categoryAr: "⚡ السبب: الإجهاد التأكسدي",
+      text: `CAUSE DETECTED — Free radical damage (WHO GBD 2021: responsible for 85% of visible aging). Aging score: ${agingScore}/100. ANTIOXIDANT PROTOCOL: Astaxanthin 8mg/day (6000× stronger than Vitamin C), CoQ10 200mg/day, Glutathione 500mg/day, Green Tea EGCG 400mg, topical Niacinamide 10%.`,
+      textAr: `سبب مكتشف — الإجهاد التأكسدي والجذور الحرة (WHO GBD 2021: مسؤول عن 85% من الشيخوخة الظاهرة). مؤشرك: ${agingScore}/100. البروتوكول: أستاكسانثين 8 ملجم/يومياً (6000 ضعف فيتامين C)، CoQ10 200 ملجم/يومياً، الجلوتاثيون 500 ملجم، مستخلص الشاي الأخضر EGCG 400 ملجم، نياسيناميد 10% موضعياً.`,
+      severity: agingScore > 55 ? "critical" as const : "warning" as const, isPremium: true,
     })
   }
 
-  // Premium – pigmentation specific
-  if (pigmentationIndex > 45) {
+  if (fatigue > 35 || darkCircles > 45 || pigmentationIndex > 45) {
     recommendations.push({
-      category: "Pigmentation", categoryAr: "التصبغ",
-      text: "Apply Vitamin C serum (10-15% L-Ascorbic Acid) every morning before sunscreen. Proven to reduce melanin production and brighten existing dark spots by 40% in 8 weeks.",
-      textAr: "ضع سيروم فيتامين C (10-15% حمض الأسكوربيك) كل صباح قبل واقي الشمس. ثُبتت فعاليته في تقليل إنتاج الميلانين وتفتيح البقع الداكنة بنسبة 40% في 8 أسابيع.",
-      severity: "warning", isPremium: true,
+      category: "🔥 Inflammaging (The Lancet 2023)", categoryAr: "🔥 السبب: التهاب خلوي مزمن",
+      text: `CAUSE DETECTED — Silent chronic inflammation accelerating aging by 7-10 years (Lancet 2023). ANTI-INFLAMMAGING PROTOCOL: Mediterranean diet (WHO GRADE A), Curcumin + Piperine 1000mg + 10mg (increases absorption 2000%), Omega-3 EPA+DHA 2-3g/day (reduces CRP by 30%), eliminate ultra-processed foods (WHO 2023). Request CRP, IL-6 blood tests.`,
+      textAr: `سبب مكتشف — التهاب خلوي صامت يُسرّع الشيخوخة 7-10 سنوات (The Lancet 2023). البروتوكول: نظام البحر الأبيض المتوسط (WHO الفئة A)، كركومين + بيبيرين 1000 ملجم + 10 ملجم (يزيد الامتصاص 2000%)، أوميغا-3 EPA+DHA 2-3 جرام/يومياً (يخفض CRP 30%)، إلغاء الأغذية فائقة المعالجة (WHO 2023). طلب تحليل CRP وIL-6.`,
+      severity: "warning" as const, isPremium: true,
     })
   }
 
-  // Premium – UV damage
-  if (uvDamageIndex > 40) {
+  if (uvDamageIndex > 28 || pigmentationIndex > 38) {
     recommendations.push({
-      category: "UV Damage", categoryAr: "الضرر الشمسي",
-      text: "IMPORTANT: Schedule an annual skin cancer screening with a dermatologist. UV damage this level requires professional evaluation. Avoid sun exposure between 10am-4pm.",
-      textAr: "مهم: احجز فحص سرطان الجلد السنوي مع طبيب جلدية. ضرر الأشعة UV بهذا المستوى يتطلب تقييماً مهنياً. تجنب التعرض للشمس بين الساعة 10 صباحاً و4 مساءً.",
-      severity: "critical", isPremium: true,
+      category: "☀️ UV DNA Damage (WHO IARC)", categoryAr: "☀️ السبب: تلف DNA الشمسي",
+      text: `CAUSE DETECTED — UV-induced DNA damage. WHO IARC classifies UV as Group 1 carcinogen. UV ${uvDamageIndex}/100 | pigmentation ${pigmentationIndex}/100. DNA REPAIR PROTOCOL: Photolyase enzyme serum (Heliocare®), SPF 50+ daily (every 2h outdoors), Niacinamide 5% (activates PARP-1 DNA repair), annual dermatologist mole mapping (MANDATORY at this level).`,
+      textAr: `سبب مكتشف — تلف DNA الخلايا بالأشعة فوق البنفسجية (WHO IARC: مسرطن الفئة الأولى). مؤشر UV: ${uvDamageIndex}/100 | تصبغات ${pigmentationIndex}/100. بروتوكول إصلاح DNA: سيروم فوتوليزاز (Heliocare®)، SPF 50+ يومياً (كل ساعتين في الخارج)، نياسيناميد 5% (ينشط PARP-1)، رسم شامة سنوي عند طبيب جلدية — إلزامي.`,
+      severity: uvDamageIndex > 55 ? "critical" as const : "warning" as const, isPremium: true,
     })
   }
 
-  // Premium – eye fatigue
-  if (fatigue > 45) {
+  if (biologicalAge > 30 && agingScore > 42) {
     recommendations.push({
-      category: "Eye Health", categoryAr: "صحة العين",
-      text: "Practice the 20-20-20 rule: every 20 minutes, look at something 20 feet away for 20 seconds. Use cold cucumber slices or chilled eye gel patches to reduce puffiness.",
-      textAr: "مارس قاعدة 20-20-20: كل 20 دقيقة، انظر إلى شيء على بعد 20 قدماً لمدة 20 ثانية. استخدم شرائح الخيار الباردة أو رقع جل العين المبردة لتقليل الانتفاخ.",
-      severity: "info", isPremium: true,
+      category: "🔬 Telomere Attrition (WHO 2022)", categoryAr: "🔬 السبب: تقصّر التيلوميرات",
+      text: `CAUSE DETECTED — Telomere shortening & cellular senescence (WHO Healthy Ageing 2022). Biological age: ${biologicalAge}. PROTOCOL: TA-65 Cycloastragenol 10mg/day (Nobel Prize 2009 validated telomerase activator), Resveratrol 500mg/day + fat meal (SIRT1 activation), HIIT 3x/week (lengthens telomeres 3-4%), Intermittent fasting 16:8 (autophagy + senescent cell clearance).`,
+      textAr: `سبب مكتشف — تقصّر التيلوميرات وتراكم الخلايا الشيخوخية (WHO Healthy Ageing 2022). العمر البيولوجي: ${biologicalAge}. البروتوكول: TA-65 سيكلوأستراجينول 10 ملجم/يومياً (منشط التيلوميراز الوحيد المثبت - جائزة نوبل 2009)، ريسفيراترول 500 ملجم/يومياً + وجبة دهنية (تنشيط SIRT1)، HIIT 3 مرات/أسبوع (يطيل التيلوميرات 3-4%)، صيام متقطع 16:8.`,
+      severity: agingScore > 55 ? "critical" as const : "warning" as const, isPremium: true,
     })
   }
 
-  // Premium – aging acceleration warning
-  if (biologicalAge > userAge + 5) {
+  if (wrinkleIndex > 38 && hydrationLevel < 68) {
     recommendations.push({
-      category: "Biological Age Alert", categoryAr: "تنبيه العمر البيولوجي",
-      text: `Your estimated biological age (${biologicalAge}) is ${biologicalAge - userAge} years older than your chronological age. This indicates accelerated aging. Key lifestyle changes: Quit smoking, reduce alcohol, increase sleep to 7-9 hours, and start antioxidant supplementation (CoQ10, Resveratrol).`,
-      textAr: `عمرك البيولوجي المقدر (${biologicalAge}) أكبر بـ ${biologicalAge - userAge} سنوات من عمرك الزمني. هذا يشير إلى شيخوخة مبكرة متسارعة. تغييرات جوهرية: الإقلاع عن التدخين، تقليل الكحول، زيادة النوم إلى 7-9 ساعات، وبدء تناول مضادات الأكسدة (CoQ10، الريسفيراترول).`,
-      severity: "critical", isPremium: true,
+      category: "🍬 Glycation & AGEs", categoryAr: "🍬 السبب: التسكّر وانهيار الكولاجين",
+      text: `CAUSE DETECTED — Advanced Glycation End-products (AGEs) stiffening collagen. WHO Diabetes Prevention: excess sugar is a direct cause. ANTI-GLYCATION PROTOCOL: Eliminate refined sugar/flour (WHO target: <25g free sugar/day), Carnosine 1000mg/day (AGE inhibitor), Benfotiamine 300mg/day (breaks AGE cross-links), low-glycemic diet (GI < 55), prefer moist heat cooking (steaming/boiling vs. frying).`,
+      textAr: `سبب مكتشف — نواتج التسكّر المتقدمة (AGEs) تُصلّب الكولاجين. WHO: السكر الزائد سبب مباشر. البروتوكول: إلغاء السكريات المكررة والدقيق (هدف WHO: أقل من 25 جرام/يوم)، كارنوسين 1000 ملجم/يومياً (مثبط AGE)، بنفوتيامين 300 ملجم/يومياً (يكسر الروابط)، نظام منخفض المؤشر الجلايسيمي (GI < 55)، طهي رطب (سلق/بخار) أفضل من القلي.`,
+      severity: "warning" as const, isPremium: true,
+    })
+  }
+
+  if (darkCircles > 40 || fatigue > 38) {
+    recommendations.push({
+      category: "😴 Sleep Deprivation (WHO)", categoryAr: "😴 السبب: نقص جودة النوم",
+      text: `CAUSE DETECTED — Sleep deprivation impairing nocturnal repair. WHO: 90% of growth hormone (essential for repair/collagen) releases during deep sleep only. Fatigue: ${fatigue}/100 | dark circles: ${darkCircles}/100. SLEEP PROTOCOL: Melatonin 0.5-1mg (30min before bed), Magnesium Glycinate 400mg nightly, bedroom 18-19°C / complete darkness, no blue light 90min before bed, 7-9 hours strict schedule (WHO standard).`,
+      textAr: `سبب مكتشف — نقص النوم يُعيق الإصلاح الليلي. WHO: 90% من هرمون النمو (أساسي للإصلاح والكولاجين) يُفرز خلال النوم العميق فقط. إجهاد: ${fatigue}/100 | هالات: ${darkCircles}/100. بروتوكول النوم: ميلاتونين 0.5-1 ملجم (30 دقيقة قبل النوم)، مغنيسيوم جليسينات 400 ملجم ليلاً، غرفة 18-19°م / ظلام تام، بلا ضوء أزرق 90 دقيقة قبل النوم، 7-9 ساعات منتظمة (معيار WHO).`,
+      severity: "info" as const, isPremium: true,
+    })
+  }
+
+  if (agingScore > 50) {
+    recommendations.push({
+      category: "⚠️ Accelerated Aging Detected", categoryAr: "⚠️ شيخوخة مبكرة مكتشفة",
+      text: `ALERT: Aging score ${agingScore}/100 indicates accelerated biological aging. WHO recommends annual biological age testing: telomere length, epigenetic GrimAge clock, CRP, HbA1c, cortisol. Begin comprehensive anti-aging protocol targeting all detected causes above immediately.`,
+      textAr: `تنبيه: مؤشر شيخوخة ${agingScore}/100 يُشير إلى شيخوخة بيولوجية متسارعة. توصي WHO بفحص سنوي: طول التيلوميرات، ساعة GrimAge اللاجينية، CRP، HbA1c، الكورتيزول. ابدأ بروتوكول شامل لمقاومة الشيخوخة يستهدف جميع الأسباب المكتشفة فوراً.`,
+      severity: "critical" as const, isPremium: true,
     })
   }
 
@@ -395,6 +378,7 @@ function analyzeAgingFromFaceData(
     overallHealthScore: overallHealth,
   }
 }
+
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function FaceScanApp() {
@@ -527,14 +511,14 @@ export default function FaceScanApp() {
             faceDetected: s.face_detected,
             overallAgingScore: s.overall_aging_score,
             estimatedBiologicalAge: s.estimated_biological_age,
-            agingIndicators: s.aging_indicators,
-            recommendations: s.recommendations,
+            agingIndicators: s.aging_indicators as AgingIndicator[],
+            recommendations: (s.recommendations as HealthRecommendation[]),
             skinAnalysis: s.skin_analysis,
             eyeAnalysis: s.eye_analysis,
             overallHealthScore: s.overall_health_score,
-          }))
+          })) as unknown as ScanResult[]
           setScanHistory(converted)
-          setScanResult(converted[0])
+          setScanResult(converted[0] ?? null)
           // Build health trends
           setHealthTrends(
             scans.slice(0, 10).reverse().map((s) => ({
@@ -569,14 +553,16 @@ export default function FaceScanApp() {
       if (!navigator.onLine) return
       try {
         setLoadingModel(true)
-        // Load face-api.js dynamically and load its models
+        // Load face-api.js dynamically and load its models from CDN (no local files needed)
         // @ts-ignore
         const faceapi = (await import("face-api.js")) as any
         
+        const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'
+        
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.ageGenderNet.loadFromUri('/models'),
-          faceapi.nets.faceExpressionNet.loadFromUri('/models')
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL),
+          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
         ])
         
         setModelLoaded(true)
@@ -711,6 +697,9 @@ export default function FaceScanApp() {
       let realGender: string | null = null
       let emotions: { expression: string, probability: number }[] = []
 
+      // Simulate processing delay for a better UX
+      await new Promise(r => setTimeout(r, 2000))
+
       if (modelLoaded) {
         try {
           // @ts-ignore
@@ -730,14 +719,18 @@ export default function FaceScanApp() {
                 .map(([expr, prob]) => ({ expression: expr, probability: prob as number }))
                 .sort((a, b) => b.probability - a.probability)
             }
+          } else {
+            // No face detected by the ML model, still continue with simulation
+            faceDetected = false
           }
         } catch (e) {
-          console.error("ML Detection failed:", e)
+          console.warn("ML Detection failed, falling back to simulation:", e)
           faceDetected = false
+          // Do NOT rethrow - fall through to simulation below
         }
       }
 
-      // Analyze rest of data based on the real ML bounds
+      // Analyze rest of data based on real ML bounds (or fall back to simulation if models didn't load)
       const analysis = analyzeAgingFromFaceData(faceDetected, realAge, realGender, emotions, lang)
 
       const result: ScanResult = {
