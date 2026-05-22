@@ -15,6 +15,7 @@ interface PiSDK {
     scopes: string[],
     onIncompletePaymentFound?: (payment: unknown) => void | Promise<void>
   ) => Promise<PiAuthResult>
+  getPiHostAppInfo?: () => Promise<{ hostApp?: string }>
   createPayment: (
     paymentData: PiPaymentData,
     callbacks: PiPaymentCallbacks
@@ -56,11 +57,32 @@ let _initPromise: Promise<void> | null = null
 /** Check if running inside Pi Browser */
 export function isPiBrowser(): boolean {
   if (typeof window === "undefined") return false
-  return navigator.userAgent.includes("PiBrowser")
+  const userAgent = navigator.userAgent.toLowerCase()
+  return userAgent.includes("pibrowser") || userAgent.includes("pi browser")
+}
+
+function hasPiSDK(): boolean {
+  return typeof window !== "undefined" && typeof window.Pi?.authenticate === "function"
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      (value) => {
+        window.clearTimeout(timeoutId)
+        resolve(value)
+      },
+      (error) => {
+        window.clearTimeout(timeoutId)
+        reject(error)
+      }
+    )
+  })
 }
 
 /** Helper to wait for Pi SDK to be available on window */
-async function waitForPiSDK(timeout = 5000): Promise<boolean> {
+async function waitForPiSDK(timeout = 15000): Promise<boolean> {
   if (typeof window === "undefined") return false
   if ((window as any).Pi) return true
 
@@ -113,21 +135,47 @@ export async function initPiSDK(): Promise<void> {
   }
 }
 
-/** Authenticate user with Pi Network */
-export async function authenticatePiUser(): Promise<PiUser | null> {
-  if (!isPiBrowser()) {
-    throw new Error("Open this app in Pi Browser to sign in with Pi Network.")
+export async function isPiHostApp(): Promise<boolean> {
+  if (typeof window === "undefined") return false
+  if (isPiBrowser()) return true
+
+  try {
+    await initPiSDK()
+  } catch {
+    return false
   }
 
+  if (typeof window.Pi.getPiHostAppInfo !== "function") {
+    return hasPiSDK()
+  }
+
+  try {
+    const hostInfo = await withTimeout(
+      window.Pi.getPiHostAppInfo(),
+      2500,
+      "Pi host detection timed out"
+    )
+    return Boolean(hostInfo?.hostApp)
+  } catch {
+    return false
+  }
+}
+
+/** Authenticate user with Pi Network */
+export async function authenticatePiUser(): Promise<PiUser | null> {
   await initPiSDK()
 
   try {
     console.log("Calling Pi.authenticate...")
-    const result = await window.Pi.authenticate(
-      ["username"],
-      (payment) => {
-        if (payment) console.warn("Incomplete Pi payment found during auth:", payment)
-      }
+    const result = await withTimeout(
+      window.Pi.authenticate(
+        ["username"],
+        (payment) => {
+          if (payment) console.warn("Incomplete Pi payment found during auth:", payment)
+        }
+      ),
+      45000,
+      "Pi authentication timed out. Tap Sign in and approve the request in Pi Browser."
     )
 
     if (!result.accessToken) {

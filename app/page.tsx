@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
 } from "recharts"
 import {
-  authenticatePiUser, createPiPayment,
+  authenticatePiUser, createPiPayment, isPiHostApp,
   type PiUser
 } from "@/lib/pi-sdk"
 import {
@@ -452,8 +452,8 @@ export default function FaceScanApp() {
   }, [isDark])
 
   // ── Pi SDK Init & Auth ─────────────────────────────────────────────────────
-  const signInWithPi = useCallback(async () => {
-    if (authRequestRef.current) {
+  const signInWithPi = useCallback(async (manual = false) => {
+    if (authRequestRef.current && !manual) {
       return authRequestRef.current
     }
 
@@ -461,6 +461,14 @@ export default function FaceScanApp() {
       setPiAuth({ user: null, loading: true, error: null })
 
       try {
+        if (!manual) {
+          const canAutoAuthenticate = await isPiHostApp()
+          if (!canAutoAuthenticate) {
+            setPiAuth({ user: null, loading: false, error: null })
+            return
+          }
+        }
+
         console.log("Attempting Pi Authentication...")
         const user = await authenticatePiUser()
         if (!user) {
@@ -486,7 +494,7 @@ export default function FaceScanApp() {
   }, [])
 
   useEffect(() => {
-    void signInWithPi()
+    void signInWithPi(false)
   }, [signInWithPi])
 
   // Load user data from DB after Pi auth
@@ -1600,6 +1608,15 @@ export default function FaceScanApp() {
           <span className="text-primary-foreground font-black text-3xl italic">M</span>
         </div>
         <h2 className="text-xl font-bold mb-2 tracking-tight">FaceScan</h2>
+        <button
+          onClick={() => void signInWithPi(true)}
+          className="mb-4 px-5 py-3 bg-primary text-primary-foreground rounded-2xl text-sm font-bold shadow-lg shadow-primary/20"
+        >
+          Sign in with Pi
+        </button>
+        {piAuth.error && (
+          <p className="mb-3 max-w-xs text-xs text-muted-foreground">{piAuth.error}</p>
+        )}
         <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
           <div className="w-1.5 h-1.5 bg-primary rounded-full" />
           <p className="text-sm font-medium uppercase tracking-[0.2em]">{isAr ? "جاري التحميل…" : "Authenticating with Pi…"}</p>
@@ -1655,7 +1672,7 @@ export default function FaceScanApp() {
             </div>
           ) : (
             <button
-              onClick={signInWithPi}
+              onClick={() => void signInWithPi(true)}
               disabled={piAuth.loading}
               className="px-3 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold shadow-sm disabled:opacity-60"
             >
