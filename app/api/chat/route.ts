@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       Always be empathetic, clear, and responsible. Never diagnose serious conditions or prescribe medications.
       Respond in the same language as the user's question (Arabic or English).`,
       prompt: message,
-      maxTokens: 500,
+      maxOutputTokens: 500,
       temperature: 0.7,
     })
 

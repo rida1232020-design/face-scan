@@ -10,10 +10,10 @@ declare global {
 }
 
 interface PiSDK {
-  init: (config: { version: string; sandbox?: boolean }) => void
+  init: (config: { version: string; sandbox?: boolean }) => Promise<void>
   authenticate: (
     scopes: string[],
-    onPresented: () => void
+    onIncompletePaymentFound?: (payment: unknown) => void | Promise<void>
   ) => Promise<PiAuthResult>
   createPayment: (
     paymentData: PiPaymentData,
@@ -51,11 +51,12 @@ export interface PiUser {
 
 let _piUser: PiUser | null = null
 let _isInitialized = false
+let _initPromise: Promise<void> | null = null
 
 /** Check if running inside Pi Browser */
 export function isPiBrowser(): boolean {
   if (typeof window === "undefined") return false
-  return !!(window as any).Pi || navigator.userAgent.includes("PiBrowser")
+  return navigator.userAgent.includes("PiBrowser")
 }
 
 /** Helper to wait for Pi SDK to be available on window */
@@ -85,94 +86,81 @@ export function isPiSandbox(): boolean {
 
 /** Initialize Pi SDK */
 export async function initPiSDK(): Promise<void> {
-  if (!isPiBrowser()) return
   if (_isInitialized) return
+  if (_initPromise) return _initPromise
 
-  const ready = await waitForPiSDK()
-  if (!ready) {
-    console.error("Pi SDK Not Found on window. Ensure script is loaded.")
-    return
-  }
+  _initPromise = (async () => {
+    const ready = await waitForPiSDK()
+    if (!ready || !window.Pi) {
+      throw new Error("Pi SDK not available. Open this app in Pi Browser.")
+    }
 
-  try {
-    window.Pi.init({
+    await window.Pi.init({
       version: "2.0",
       sandbox: isPiSandbox(),
     })
+
     _isInitialized = true
     console.log("Pi SDK Initialized successfully")
-  } catch (e) {
-    console.error("Pi SDK init failed:", e)
+  })()
+
+  try {
+    await _initPromise
+  } catch (error) {
+    _initPromise = null
+    console.error("Pi SDK init failed:", error)
+    throw error
   }
 }
 
 /** Authenticate user with Pi Network */
 export async function authenticatePiUser(): Promise<PiUser | null> {
-  // Ensure initialized first
-  if (isPiBrowser() && !_isInitialized) {
-    await initPiSDK()
-  }
-
   if (!isPiBrowser()) {
-    console.log("Not in Pi Browser, using mock user")
-    // Return mock user for development outside Pi Browser
-    const mockUser: PiUser = {
-      uid: "dev_user_" + (localStorage.getItem("medipi_dev_uid") || (() => {
-        const uid = Math.random().toString(36).substring(2, 10)
-        localStorage.setItem("medipi_dev_uid", uid)
-        return uid
-      })()),
-      username: "developer",
-      accessToken: "dev_token",
-    }
-    _piUser = mockUser
-    return mockUser
+    throw new Error("Open this app in Pi Browser to sign in with Pi Network.")
   }
 
-  // Double check initialization
-  if (!_isInitialized || !window.Pi) {
-    const ready = await waitForPiSDK()
-    if (!ready || !window.Pi) {
-      throw new Error("Pi SDK not available after wait")
-    }
-  }
+  await initPiSDK()
 
   try {
     console.log("Calling Pi.authenticate...")
     const result = await window.Pi.authenticate(
-      ["username", "payments"],
-      () => { console.log("Pi Auth Dialog Presented") }
+      ["username"],
+      (payment) => {
+        if (payment) console.warn("Incomplete Pi payment found during auth:", payment)
+      }
     )
 
-    const piUser: PiUser = {
-      uid: result.user.uid,
-      username: result.user.username,
-      accessToken: result.accessToken,
+    if (!result.accessToken) {
+      throw new Error("Pi authentication did not return an access token")
     }
 
-    // Verify with backend
-    try {
-      const response = await fetch("/api/auth/pi", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uid: piUser.uid,
-          username: piUser.username,
-          accessToken: piUser.accessToken,
-        }),
-      })
-      if (!response.ok) throw new Error("Server auth failed")
-    } catch (e) {
-      console.warn("Backend auth verification failed, continuing with Pi auth:", e)
+    const response = await fetch("/api/auth/pi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: result.accessToken }),
+    })
+
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      throw new Error(data?.error || "Server auth failed")
+    }
+
+    const verifiedUser = data?.user
+    if (!verifiedUser?.pi_uid || !verifiedUser?.username) {
+      throw new Error("Server auth response did not include a verified Pi user")
+    }
+
+    const piUser: PiUser = {
+      uid: verifiedUser.pi_uid,
+      username: verifiedUser.username,
+      accessToken: result.accessToken,
     }
 
     _piUser = piUser
     return piUser
   } catch (error: any) {
     console.error("Pi authentication failed:", error)
-    if (error.message === "Server auth failed") {
-      throw new Error("SERVER_AUTH_FAILED")
-    }
     throw error
   }
 }

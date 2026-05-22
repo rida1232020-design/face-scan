@@ -25,15 +25,6 @@ interface PiAuthResult {
   };
 }
 
-declare global {
-  interface Window {
-    Pi: {
-      init: (config: { version: string; sandbox?: boolean }) => Promise<void>;
-      authenticate: (scopes: string[], paymentCallback?: (payment: any) => Promise<void>) => Promise<PiAuthResult>;
-    };
-  }
-}
-
 const COMMUNICATION_REQUEST_TYPE = '@pi:app:sdk:communication_information_request';
 const DEFAULT_ERROR_MESSAGE = 'Failed to authenticate or login. Please refresh and try again.';
 

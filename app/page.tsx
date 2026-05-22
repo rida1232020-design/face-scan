@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
 } from "recharts"
 import {
-  initPiSDK, authenticatePiUser, createPiPayment, isPiBrowser,
+  authenticatePiUser, createPiPayment,
   type PiUser
 } from "@/lib/pi-sdk"
 import {
@@ -66,7 +66,7 @@ const LockIcon = () => (
 )
 const AlertIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <triangle points="10.29,3.86 1.82,18 22.18,18" /><line x1="12" y1="9" x2="12" y2="13" />
+    <polygon points="10.29,3.86 1.82,18 22.18,18" /><line x1="12" y1="9" x2="12" y2="13" />
     <line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 )
@@ -399,6 +399,7 @@ export default function FaceScanApp() {
 
   // ── Pi Auth ────────────────────────────────────────────────────────────────
   const [piAuth, setPiAuth] = useState<PiAuthState>({ user: null, loading: true, error: null })
+  const authRequestRef = useRef<Promise<void> | null>(null)
   const [dbUserId, setDbUserId] = useState<string | null>(null)
   const [healthTrends, setHealthTrends] = useState<HealthTrend[]>([])
   const [savingToDB, setSavingToDB] = useState(false)
@@ -451,45 +452,42 @@ export default function FaceScanApp() {
   }, [isDark])
 
   // ── Pi SDK Init & Auth ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const init = async () => {
+  const signInWithPi = useCallback(async () => {
+    if (authRequestRef.current) {
+      return authRequestRef.current
+    }
+
+    const request = (async () => {
+      setPiAuth({ user: null, loading: true, error: null })
+
       try {
-        console.log("Starting Pi SDK Initialization...")
-        await initPiSDK()
-
-        // Try restore from localStorage first
-        const savedUser = localStorage.getItem("facescan_pi_user")
-        if (savedUser) {
-          try {
-            const u: PiUser = JSON.parse(savedUser)
-            setPiAuth({ user: u, loading: false, error: null })
-            await loadUserData(u)
-            console.log("Restored Pi User from localStorage")
-            return
-          } catch (e) {
-            localStorage.removeItem("facescan_pi_user")
-          }
-        }
-
-        // Authenticate fresh
         console.log("Attempting Pi Authentication...")
         const user = await authenticatePiUser()
-        if (user) {
-          localStorage.setItem("facescan_pi_user", JSON.stringify(user))
-          setPiAuth({ user, loading: false, error: null })
-          await loadUserData(user)
-          console.log("Pi Authentication successful")
-        } else {
-          setPiAuth({ user: null, loading: false, error: "auth_failed" })
+        if (!user) {
+          throw new Error("Pi authentication failed")
         }
+
+        setPiAuth({ user, loading: false, error: null })
+        await loadUserData(user)
+        console.log("Pi Authentication successful")
       } catch (e: any) {
         console.error("Pi Init/Auth Error:", e)
+        localStorage.removeItem("facescan_pi_user")
         setPiAuth({ user: null, loading: false, error: e.message || "auth_error" })
       }
+    })()
+
+    authRequestRef.current = request
+    try {
+      await request
+    } finally {
+      authRequestRef.current = null
     }
-    init()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    void signInWithPi()
+  }, [signInWithPi])
 
   // Load user data from DB after Pi auth
   const loadUserData = async (user: PiUser) => {
@@ -1650,10 +1648,20 @@ export default function FaceScanApp() {
           {isPremium && <span className="text-xs bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 px-1.5 py-0.5 rounded-full uppercase font-black">PRO</span>}
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter">Pi Member</p>
-            <p className="text-xs font-bold">@{piAuth.user?.username || "Guest"}</p>
-          </div>
+          {piAuth.user ? (
+            <div className="text-right hidden sm:block">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter">Pi Member</p>
+              <p className="text-xs font-bold">@{piAuth.user.username}</p>
+            </div>
+          ) : (
+            <button
+              onClick={signInWithPi}
+              disabled={piAuth.loading}
+              className="px-3 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold shadow-sm disabled:opacity-60"
+            >
+              Sign in
+            </button>
+          )}
           <div className="flex items-center gap-1.5 border-l border-border pl-3">
             <button onClick={() => setLang(l => l === "en" ? "ar" : "en")} className="w-8 h-8 flex items-center justify-center border border-border rounded-xl hover:bg-muted text-[10px] font-bold">
               {lang === "en" ? "ع" : "EN"}
