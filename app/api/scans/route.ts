@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
             face_detected: scan.faceDetected,
             skin_analysis: scan.skinAnalysis,
             eye_analysis: scan.eyeAnalysis,
+            tongue_analysis: scan.tongueAnalysis,
             aging_indicators: scan.agingIndicators,
             recommendations: scan.recommendations,
         })

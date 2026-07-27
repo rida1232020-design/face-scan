@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { saveTransaction, updateTransactionStatus, getUserByPiUid } from "@/lib/database"
+import { saveTransaction, updateTransactionStatus, getUserByPiUid, updateUserPremium } from "@/lib/database"
 
 const PI_API_KEY = process.env.PI_API_KEY || ""
 const PI_SANDBOX = process.env.NEXT_PUBLIC_PI_SANDBOX === "true"
@@ -42,6 +42,13 @@ export async function POST(request: NextRequest) {
         if (piUid) {
             const user = await getUserByPiUid(piUid)
             if (user) {
+                const fullDesc = `${description || ""} ${memo || ""} ${descriptionAr || ""}`.toLowerCase()
+                const isPremiumPurchase = fullDesc.includes("premium") || fullDesc.includes("ممتاز") || fullDesc.includes("ترقية") || fullDesc.includes("vip")
+                
+                if (isPremiumPurchase) {
+                    await updateUserPremium(user.id, true)
+                }
+
                 await saveTransaction(user.id, {
                     pi_payment_id: paymentId,
                     transaction_type: "payment",

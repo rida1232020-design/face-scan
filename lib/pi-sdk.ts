@@ -170,8 +170,27 @@ export async function authenticatePiUser(): Promise<PiUser | null> {
     const result = await withTimeout(
       window.Pi.authenticate(
         ["username"],
-        (payment) => {
-          if (payment) console.warn("Incomplete Pi payment found during auth:", payment)
+        async (payment: any) => {
+          if (payment) {
+            console.warn("Incomplete Pi payment found during auth:", payment)
+            try {
+              if (payment.identifier && payment.transaction?.txid) {
+                await fetch("/api/payment/complete", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    paymentId: payment.identifier,
+                    txid: payment.transaction.txid,
+                    memo: payment.memo || "Incomplete Payment Resolved",
+                    amount: payment.amount || 0,
+                    piUid: payment.user_uid,
+                  }),
+                })
+              }
+            } catch (err) {
+              console.error("Failed to resolve incomplete payment:", err)
+            }
+          }
         }
       ),
       45000,
@@ -319,3 +338,17 @@ export async function createPiPayment(
     }
   })
 }
+
+/** Share result via Pi Browser or native Share API */
+export function shareOnPiNetwork(title: string, message: string): void {
+  if (typeof window !== "undefined" && window.Pi && typeof window.Pi.openShareDialog === "function") {
+    window.Pi.openShareDialog(title, message)
+  } else if (typeof navigator !== "undefined" && navigator.share) {
+    navigator.share({ title, text: message }).catch(() => {})
+  } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+    navigator.clipboard.writeText(`${title}\n${message}`).then(() => {
+      alert("تم نسخ النتيجة لمشاركتها!")
+    }).catch(() => {})
+  }
+}
+

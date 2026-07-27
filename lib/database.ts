@@ -51,6 +51,17 @@ export interface DbScanResult {
     fatigue: number
     puffiness: number
     darkCircles: number
+    scleraClarity?: number
+    rednessIndex?: number
+  }
+  tongue_analysis?: {
+    tongueDetected: boolean
+    colorStatus: string
+    colorStatusAr: string
+    coatingStatus: string
+    coatingStatusAr: string
+    hydrationLevel: number
+    digestiveHealthScore: number
   }
   aging_indicators: Array<{
     label: string
