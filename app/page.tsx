@@ -11,7 +11,7 @@ import {
 } from "@/lib/pi-sdk"
 import {
   upsertUser, saveScanResult, getScanHistory, saveTransaction, getTransactions,
-  upsertProfile, getProfile, type DbScanResult, type DbTransaction, type DbProfile
+  upsertProfile, getProfile, updateUserPremium, type DbScanResult, type DbTransaction, type DbProfile
 } from "@/lib/database"
 
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
@@ -163,7 +163,8 @@ function analyzeAgingFromFaceData(
   realAge: number | null,
   realGender: string | null,
   emotions: { expression: string; probability: number }[],
-  lang: Lang
+  lang: Lang,
+  includeTongueScan: boolean = false
 ): Omit<ScanResult, "id" | "timestamp"> {
   const base = Math.floor(Math.random() * 25) + 15
   const visualAgeEstimate = realAge
@@ -204,15 +205,19 @@ function analyzeAgingFromFaceData(
   const rednessIndex = Math.min(100, Math.round(fatigue * 0.45 + Math.floor(Math.random() * 20)))
 
   const isTongueWhiteCoated = fatigue > 35 || hydrationLevel < 60
-  const tongueAnalysis = {
-    tongueDetected: true,
-    colorStatus: isSadOrAngry ? "Slightly Pale Pink" : "Healthy Natural Pink",
-    colorStatusAr: isSadOrAngry ? "وردي شاحب (مؤشر إجهاد أو انخفاض طاقة)" : "وردي طبيعي وصحي",
-    coatingStatus: isTongueWhiteCoated ? "Light White Coating" : "Clean Normal Coating",
-    coatingStatusAr: isTongueWhiteCoated ? "طبقة بيضاء خفيفة (إجهاد هضمي/ميكروبيوم)" : "طبقة نظيفة وسليمة",
-    hydrationLevel: hydrationLevel,
-    digestiveHealthScore: Math.max(55, 100 - Math.round((100 - hydrationLevel) * 0.35 + fatigue * 0.25)),
-  }
+
+  // Tongue Data ONLY generated if tongue scan mode was explicitly active
+  const tongueAnalysis = includeTongueScan
+    ? {
+        tongueDetected: true,
+        colorStatus: isSadOrAngry ? "Slightly Pale Pink" : "Healthy Natural Pink",
+        colorStatusAr: isSadOrAngry ? "وردي شاحب (مؤشر إجهاد أو انخفاض طاقة)" : "وردي طبيعي وصحي",
+        coatingStatus: isTongueWhiteCoated ? "Light White Coating" : "Clean Normal Coating",
+        coatingStatusAr: isTongueWhiteCoated ? "طبقة بيضاء خفيفة (إجهاد هضمي/ميكروبيوم)" : "طبقة نظيفة وسليمة",
+        hydrationLevel: hydrationLevel,
+        digestiveHealthScore: Math.max(55, 100 - Math.round((100 - hydrationLevel) * 0.35 + fatigue * 0.25)),
+      }
+    : undefined
 
   const agingIndicators: AgingIndicator[] = [
     {
@@ -267,7 +272,7 @@ function analyzeAgingFromFaceData(
     },
   ]
 
-  if (isTongueWhiteCoated) {
+  if (includeTongueScan && isTongueWhiteCoated) {
     recommendations.push({
       category: "👅 Tongue & Gut Health",
       categoryAr: "👅 صحة اللسان والجهاز الهضمي",
@@ -315,14 +320,14 @@ export default function FaceScanApp() {
   const [dbUserId, setDbUserId] = useState<string | null>(null)
   const [healthTrends, setHealthTrends] = useState<HealthTrend[]>([])
 
-  // Camera & Scan
+  // Camera & Scan Mode
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [isScanning, setIsScanning] = useState(false)
-  const [modelLoaded, setModelLoaded] = useState(false)
+  const [includeTongueScan, setIncludeTongueScan] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([])
 
@@ -332,17 +337,10 @@ export default function FaceScanApp() {
   })
   const [isRecording, setIsRecording] = useState(false)
   const [isAnalyzingVoice, setIsAnalyzingVoice] = useState(false)
-  const [voiceError, setVoiceError] = useState<string | null>(null)
 
-  // Wallet / Payment
-  const [balance, setBalance] = useState(125.5)
-  const [testBalance, setTestBalance] = useState(1000)
-  const [devMode, setDevMode] = useState(false)
-  const [devPassword, setDevPassword] = useState("")
-  const [showDevAuth, setShowDevAuth] = useState(false)
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: "tx1", amount: -5, description: "Premium Upgrade", descriptionAr: "ترقية مميزة (5 Pi)", timestamp: new Date(Date.now() - 86400000).toISOString(), status: "completed" },
-  ])
+  // Wallet / Pi Balance
+  const [balance, setBalance] = useState(0.0)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [showPayDialog, setShowPayDialog] = useState<"premium" | null>(null)
 
@@ -404,6 +402,8 @@ export default function FaceScanApp() {
       if (dbUser) {
         setDbUserId(dbUser.id)
         setIsPremium(dbUser.is_premium)
+        setBalance(Number(dbUser.pi_balance || 0.0))
+
         const prof = await getProfile(dbUser.id)
         if (prof) {
           setProfile({
@@ -547,7 +547,8 @@ export default function FaceScanApp() {
       }
 
       await new Promise((r) => setTimeout(r, 1800))
-      const analysis = analyzeAgingFromFaceData(true, parseInt(profile.age || "30"), profile.gender, [], lang)
+      // Tongue Analysis ONLY included if includeTongueScan is toggled active
+      const analysis = analyzeAgingFromFaceData(true, parseInt(profile.age || "30"), profile.gender, [], lang, includeTongueScan)
 
       const result: ScanResult = {
         id: Date.now().toString(),
@@ -580,7 +581,6 @@ export default function FaceScanApp() {
 
   // Voice Analysis Handler
   const startVoiceRecording = async () => {
-    setVoiceError(null)
     setIsRecording(true)
     setTimeout(() => {
       setIsRecording(false)
@@ -598,33 +598,16 @@ export default function FaceScanApp() {
     }, 4000)
   }
 
-  // Payments Logic - Always 5 Pi
+  // Authentic Real Pi Payment (Connected to Pi Wallet Testnet/Mainnet)
   const processPayment = async (amount: number, desc: string, descAr: string): Promise<boolean> => {
+    if (!piAuth.user) {
+      alert(isAr ? "يرجى فتح التطبيق داخل Pi Browser وتوقيع الدخول عبر Pi Wallet" : "Please open this app inside Pi Browser and sign in with Pi Wallet")
+      return false
+    }
+
     setPaymentLoading(true)
     try {
-      const isPiBrowserEnv = typeof window !== "undefined" && (
-        navigator.userAgent.toLowerCase().includes("pibrowser") ||
-        navigator.userAgent.toLowerCase().includes("pi browser") ||
-        (window.Pi && typeof window.Pi.createPayment === "function")
-      )
-
-      if (!isPiBrowserEnv || devMode || !piAuth.user) {
-        // Simulated Payment in standard web browser or dev mode
-        await new Promise((r) => setTimeout(r, 1200))
-        const tx: Transaction = {
-          id: `sim_tx_${Date.now()}`,
-          amount: -amount,
-          description: desc,
-          descriptionAr: descAr,
-          timestamp: new Date().toISOString(),
-          status: "completed",
-        }
-        setTransactions((p) => [tx, ...p])
-        setIsPremium(true)
-        return true
-      }
-
-      // Real Pi Network Payment (5 Pi)
+      console.log(`Initiating real Pi Payment of ${amount} Pi...`)
       const payment = await createPiPayment(amount, desc, {
         descriptionAr: descAr,
         dbUserId: dbUserId || "",
@@ -641,16 +624,20 @@ export default function FaceScanApp() {
         }
         setTransactions((p) => [tx, ...p])
         setIsPremium(true)
+        if (dbUserId) {
+          await updateUserPremium(dbUserId, true)
+        }
         return true
       } else {
-        // Fallback activation to guarantee smooth user testing
-        setIsPremium(true)
-        return true
+        const errorMsg = payment?.error || (isAr ? "تم إلغاء أو رفض عملية الدفع عبر Pi Wallet" : "Pi Wallet payment cancelled or declined")
+        console.warn("Pi Payment notice:", errorMsg)
+        alert((isAr ? "فشل عملية الدفع عبر Pi Wallet: " : "Pi Wallet Payment failed: ") + errorMsg)
+        return false
       }
     } catch (err: any) {
-      console.warn("Payment flow handled smoothly:", err)
-      setIsPremium(true)
-      return true
+      console.error("Pi Payment Exception:", err)
+      alert((isAr ? "تعذّر الاتصال بمحفظة Pi: " : "Failed connecting to Pi Wallet: ") + (err?.message || String(err)))
+      return false
     } finally {
       setPaymentLoading(false)
     }
@@ -661,7 +648,7 @@ export default function FaceScanApp() {
     if (ok) {
       setIsPremium(true)
       setShowPayDialog(null)
-      alert(isAr ? "تم الترقية بنجاح إلى النسخة المميزة (5 Pi)! تم فتح كافة الخدمات والتوصيات." : "Upgraded to Premium (5 Pi)! All full services & recommendations unlocked.")
+      alert(isAr ? "تمت الترقية بنجاح عبر Pi Wallet (5 Pi)! تم فتح كافة الخدمات والتوصيات." : "Upgraded via Pi Wallet (5 Pi)! All services unlocked.")
     }
   }
 
@@ -692,7 +679,7 @@ export default function FaceScanApp() {
           <div>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              {isAr ? "شبكة باي العصبية Active" : "Pi Neural Engine Active"}
+              {piAuth.user ? (isAr ? `موثّق: @${piAuth.user.username}` : `Verified: @${piAuth.user.username}`) : (isAr ? "شبكة باي العصبية Active" : "Pi Neural Engine Active")}
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground mt-3 tracking-tight">
               {isAr ? "فحص الوجه والعمر البيولوجي" : "FaceScan Biological Age"}
@@ -708,7 +695,7 @@ export default function FaceScanApp() {
         {/* Quick Action Button */}
         <div className="mt-5 flex items-center gap-3">
           <button
-            onClick={() => setTab("scan")}
+            onClick={() => { setIncludeTongueScan(false); setTab("scan") }}
             className="px-5 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-sm shadow-lg shadow-cyan-500/25 hover:brightness-110 active:scale-95 transition-all flex items-center gap-2"
           >
             <ScanIcon /> {isAr ? "بدء فحص صحي جديد" : "Start New Scan"}
@@ -727,7 +714,7 @@ export default function FaceScanApp() {
       {/* Feature Grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
         <div
-          onClick={() => setTab("scan")}
+          onClick={() => { setIncludeTongueScan(false); setTab("scan") }}
           className="group cursor-pointer rounded-2xl p-4 bg-card/60 backdrop-blur-md border border-border/80 hover:border-cyan-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/5 space-y-2"
         >
           <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -738,7 +725,7 @@ export default function FaceScanApp() {
         </div>
 
         <div
-          onClick={() => setTab("scan")}
+          onClick={() => { setIncludeTongueScan(false); setTab("scan") }}
           className="group cursor-pointer rounded-2xl p-4 bg-card/60 backdrop-blur-md border border-border/80 hover:border-blue-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/5 space-y-2"
         >
           <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -749,14 +736,14 @@ export default function FaceScanApp() {
         </div>
 
         <div
-          onClick={() => setTab("scan")}
-          className="group cursor-pointer rounded-2xl p-4 bg-card/60 backdrop-blur-md border border-border/80 hover:border-emerald-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/5 space-y-2"
+          onClick={() => { setIncludeTongueScan(true); setTab("scan") }}
+          className="group cursor-pointer rounded-2xl p-4 bg-card/60 backdrop-blur-md border border-emerald-500/40 hover:border-emerald-500/80 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10 space-y-2"
         >
           <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
             <span>👅</span>
           </div>
-          <p className="font-bold text-sm text-foreground">{isAr ? "تشخيص اللسان والهضم" : "Tongue & Gut Biomarkers"}</p>
-          <p className="text-xs text-muted-foreground">{isAr ? "الميكروبيوم والطب الحيوي" : "Microbiome & Absorption"}</p>
+          <p className="font-bold text-sm text-emerald-400">{isAr ? "تشخيص اللسان والهضم" : "Tongue Scan Mode"}</p>
+          <p className="text-xs text-muted-foreground">{isAr ? "إظهار اللسان للكاميرا للتحليل" : "Show tongue to camera"}</p>
         </div>
 
         <div
@@ -789,12 +776,12 @@ export default function FaceScanApp() {
             <h3 className="font-bold text-lg text-foreground">{isAr ? "احصل على كافة الخدمات بـ 5 Pi فقط" : "Unlock All Services for Only 5 Pi"}</h3>
             <p className="text-xs text-muted-foreground">
               {isAr
-                ? "تشمل التحليل العصبي الكامل، صحة العين واللسان، والتوصيات الوقائية الدقيقة"
-                : "Full neural analysis, eye & tongue biomarkers, and clinical WHO anti-aging protocols"}
+                ? "تشمل التحليل العصبي الكامل عبر Pi Wallet، صحة العين واللسان، والتوصيات الوقائية الدقيقة"
+                : "Full neural analysis via Pi Wallet, eye & tongue biomarkers, and clinical WHO protocols"}
             </p>
           </div>
           <button className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-sm shadow-md flex-shrink-0">
-            {isAr ? "ترقية الآن (5 Pi)" : "Upgrade Now (5 Pi)"}
+            {isAr ? "ترقية عبر Pi Wallet (5 Pi)" : "Upgrade via Pi Wallet (5 Pi)"}
           </button>
         </div>
       ) : (
@@ -815,6 +802,28 @@ export default function FaceScanApp() {
         <h2 className="text-2xl font-extrabold text-foreground tracking-tight">{isAr ? "مركز الفحص العصبي الشامل" : "Neural Scan Center"}</h2>
         <p className="text-xs text-muted-foreground">{isAr ? "وجه وجهك نحو الكاميرا أو قم برفع صورة واضحة للتحليل" : "Position face in frame or upload a clear photo for analysis"}</p>
       </div>
+
+      {/* Mode Selector Toggle */}
+      <div className="flex rounded-2xl bg-slate-900 p-1 border border-slate-800 text-xs font-semibold">
+        <button
+          onClick={() => setIncludeTongueScan(false)}
+          className={`flex-1 py-2.5 rounded-xl transition-all ${!includeTongueScan ? "bg-cyan-500 text-white shadow-md font-bold" : "text-slate-400 hover:text-slate-200"}`}
+        >
+          📸 {isAr ? "فحص الوجه والعينين" : "Face & Ocular Scan"}
+        </button>
+        <button
+          onClick={() => setIncludeTongueScan(true)}
+          className={`flex-1 py-2.5 rounded-xl transition-all ${includeTongueScan ? "bg-emerald-500 text-white shadow-md font-bold" : "text-slate-400 hover:text-slate-200"}`}
+        >
+          👅 {isAr ? "فحص الوجه + اللسان" : "Face + Tongue Scan"}
+        </button>
+      </div>
+
+      {includeTongueScan && (
+        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs text-center font-medium animate-pulse">
+          🗣️ {isAr ? "يرجى فتح الفم وإظهار اللسان بوضوح أمام الكاميرا لتشخيص لون ونقاء اللسان والميكروبيوم" : "Please open your mouth and clearly show your tongue to the camera for microbiome diagnosis"}
+        </div>
+      )}
 
       {/* Cyber Camera Viewbox */}
       <div className="relative rounded-3xl overflow-hidden bg-slate-950 border border-cyan-500/30 shadow-2xl shadow-cyan-950/40">
@@ -844,7 +853,7 @@ export default function FaceScanApp() {
             <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm flex flex-col items-center justify-center z-20">
               <div className="animate-laser-beam" />
               <div className="w-16 h-16 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mb-3" />
-              <p className="font-bold text-sm text-cyan-300 animate-pulse">{isAr ? "الشبكة العصبية تحلل مؤشرات الوجه والعين واللسان…" : "AI Analyzing Facial & Biological Biomarkers..."}</p>
+              <p className="font-bold text-sm text-cyan-300 animate-pulse">{isAr ? "الشبكة العصبية تحلل مؤشرات الوجه والعينين…" : "AI Analyzing Facial & Biological Biomarkers..."}</p>
               <p className="text-[11px] text-slate-400 mt-1">{isAr ? "استخلاص مصفوفة الكولاجين والعمر البيولوجي" : "Computing Biological Age & Skin Matrix"}</p>
             </div>
           )}
@@ -1017,8 +1026,8 @@ export default function FaceScanApp() {
             </div>
           )}
 
-          {/* Tongue & Gut Health Diagnostic Card */}
-          {scanResult.tongueAnalysis && (
+          {/* Tongue & Gut Health Diagnostic Card - ONLY RENDERED IF TONGUE WAS SCANNED */}
+          {scanResult.tongueAnalysis && scanResult.tongueAnalysis.tongueDetected && (
             <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
@@ -1043,7 +1052,7 @@ export default function FaceScanApp() {
           <div className="space-y-3">
             <h4 className="font-bold text-sm text-foreground">{isAr ? "التوصيات والبروتوكولات الطبية" : "Clinical Protocols & Recommendations"}</h4>
             {scanResult.recommendations.map((rec, i) => {
-              const locked = rec.isPremium && !isPremium && !devMode
+              const locked = rec.isPremium && !isPremium
               return (
                 <div
                   key={i}
@@ -1061,7 +1070,7 @@ export default function FaceScanApp() {
                       <p className="font-bold text-xs">{isAr ? rec.categoryAr : rec.category}</p>
                       {locked ? (
                         <p className="text-[11px] text-muted-foreground">
-                          {isAr ? "ادفع 5 Pi لفتح كافة الخدمات والتوصيات الطبية المتخصصة" : "Pay 5 Pi to unlock this specialist medical recommendation"}
+                          {isAr ? "ادفع 5 Pi عبر Pi Wallet لفتح كافة الخدمات والتوصيات الطبية المتخصصة" : "Pay 5 Pi via Pi Wallet to unlock this specialist medical recommendation"}
                         </p>
                       ) : (
                         <p className="text-[11px] leading-relaxed">{isAr ? rec.textAr : rec.text}</p>
@@ -1078,7 +1087,7 @@ export default function FaceScanApp() {
               onClick={() => setShowPayDialog("premium")}
               className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-sm shadow-lg shadow-cyan-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
             >
-              <SparklesIcon /> {isAr ? "ادفع 5 Pi لفتح كافة التحليلات والخدمات" : "Pay 5 Pi to Unlock All Features"}
+              <SparklesIcon /> {isAr ? "ادفع 5 Pi عبر Pi Wallet لفتح كافة الخدمات" : "Pay 5 Pi via Pi Wallet to Unlock All Features"}
             </button>
           )}
         </div>
@@ -1138,36 +1147,40 @@ export default function FaceScanApp() {
           {profileSaved ? (isAr ? "تم الحفظ بنجاح! ✓" : "Saved! ✓") : isAr ? "حفظ البيانات في Supabase" : "Save Profile"}
         </button>
       </div>
-
-      {/* Dev Mode Trigger */}
-      <div className="text-center pt-4">
-        <button onClick={() => setShowDevAuth(true)} className="text-[11px] text-muted-foreground underline hover:text-foreground">
-          {isAr ? "وضع المطور (Dev Access)" : "Developer Access"}
-        </button>
-      </div>
     </div>
   )
 
   const renderWallet = () => (
     <div className="space-y-6 animate-fade-in">
       <div className="text-center space-y-1">
-        <h2 className="text-2xl font-extrabold text-foreground tracking-tight">{isAr ? "محفظة باي ومدفوعات النظام" : "Pi Wallet & Payments"}</h2>
-        <p className="text-xs text-muted-foreground">{isAr ? "رصيدك الحالي وسجل معاملات Pi Coin" : "Your Pi Network balance and transactions"}</p>
+        <h2 className="text-2xl font-extrabold text-foreground tracking-tight">{isAr ? "محفظة باي وتدفقات Pi Coin" : "Pi Wallet & Payments"}</h2>
+        <p className="text-xs text-muted-foreground">{isAr ? "رصيدك الموثق في باي ومعاملات Pi Network" : "Your verified Pi Wallet balance and payments"}</p>
       </div>
 
       {/* Balance Box */}
       <div className="rounded-3xl bg-gradient-to-br from-cyan-950/80 via-slate-900 to-purple-950/60 border border-cyan-500/30 p-6 text-center shadow-xl space-y-2">
-        <p className="text-xs text-cyan-300 font-semibold">{isAr ? "الرصيد المتاح لشبكة باي" : "Available Pi Balance"}</p>
-        <p className="text-4xl font-extrabold text-cyan-400 tracking-tight">π {devMode ? testBalance.toFixed(2) : balance.toFixed(2)}</p>
+        <p className="text-xs text-cyan-300 font-semibold">{isAr ? "رصيد حساب باي الموثق" : "Verified Pi Balance"}</p>
+        <p className="text-4xl font-extrabold text-cyan-400 tracking-tight">π {balance.toFixed(2)}</p>
         <div className="flex items-center justify-center gap-1.5 pt-1">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <p className="text-[11px] text-slate-400">{isAr ? "متصل بالشبكة الحيوية (Pi SDK v2.0)" : "Connected to Pi Ecosystem (v2.0)"}</p>
+          <p className="text-[11px] text-slate-400">
+            {piAuth.user
+              ? isAr
+                ? `متصل بالشبكة الحية/التجريبية لـ Pi (@${piAuth.user.username})`
+                : `Connected to Pi Network (@${piAuth.user.username})`
+              : isAr
+              ? "افتح التطبيق عبر Pi Browser لتفعيل المحفظة الحقيقية"
+              : "Open in Pi Browser to connect Pi Wallet"}
+          </p>
         </div>
       </div>
 
       {/* Transactions List */}
       <div className="rounded-3xl bg-card/70 backdrop-blur-md border border-border p-5 space-y-3">
-        <h3 className="font-bold text-sm text-foreground">{isAr ? "سجل المعاملات" : "Transaction History"}</h3>
+        <h3 className="font-bold text-sm text-foreground">{isAr ? "سجل المعاملات بـ Pi" : "Pi Transaction History"}</h3>
+        {transactions.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">{isAr ? "لا توجد معاملات باي سابقة" : "No Pi transactions recorded"}</p>
+        )}
         {transactions.map((tx) => (
           <div key={tx.id} className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-none text-xs">
             <div>
@@ -1264,25 +1277,23 @@ export default function FaceScanApp() {
         </div>
       </nav>
 
-      {/* 5 Pi PAYMENT DIALOG */}
+      {/* 5 Pi REAL PAYMENT DIALOG (AUTHENTIC PI WALLET PROMPT) */}
       {showPayDialog && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-end sm:items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-cyan-500/30 p-6 space-y-4 shadow-2xl shadow-cyan-950/50 animate-scale-up">
             <div className="text-center space-y-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/20">
-                {isAr ? "ترقية مميزة 5 Pi" : "5 Pi Premium Upgrade"}
+                {isAr ? "ترقية عبر Pi Wallet (5 Pi)" : "5 Pi Wallet Payment"}
               </span>
-              <h3 className="font-extrabold text-xl text-foreground">{isAr ? "فتح كافة الخدمات والتحليلات" : "Unlock All Features & Services"}</h3>
+              <h3 className="font-extrabold text-xl text-foreground">{isAr ? "تأكيد الدفع عبر محفظة باي" : "Confirm Pi Wallet Payment"}</h3>
             </div>
 
             <div className="rounded-2xl bg-slate-950 border border-slate-800 p-4 text-center space-y-3">
               <p className="text-3xl font-black text-cyan-400 tracking-tight">5 Pi</p>
               <ul className="text-xs space-y-2 text-slate-300 text-right dir-rtl">
-                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "تحليل العمر البيولوجي وساعة الشيخوخة" : "Full Biological Age Analysis"}</li>
-                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "تشخيص صحة ونقاء صلبة العين وإجهاد الشاشات" : "Ocular Fatigue & Sclera Clarity"}</li>
-                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "تحليل اللسان، الميكروبيوم وصحة الهضم" : "Tongue & Microbiome Diagnostic"}</li>
-                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "تحليل نبرة الصوت والمؤشرات الحيوية" : "Voice Biomarker Analysis"}</li>
-                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "التوصيات والبروتوكولات الوقائية الاحترافية" : "WHO Anti-Aging Protocols"}</li>
+                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "فتح نافذة الدفع الرسمية لمبرمجي Pi Network" : "Invokes Official Pi SDK Payment Modal"}</li>
+                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "توقيع العملية عبر محفظتك (Testnet / Mainnet)" : "Signed via your Pi Wallet"}</li>
+                <li className="flex items-center gap-2"><CheckIcon /> {isAr ? "فتح جميع التحليلات، صحة العين واللسان والتوصيات" : "Unlocks all full features and medical reports"}</li>
               </ul>
             </div>
 
@@ -1298,42 +1309,7 @@ export default function FaceScanApp() {
                 disabled={paymentLoading}
                 className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-xs shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
               >
-                {paymentLoading ? (isAr ? "جاري المعالجة…" : "Processing...") : (isAr ? "ادفع 5 Pi الآن" : "Pay 5 Pi Now")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DEV AUTH DIALOG */}
-      {showDevAuth && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-xs rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
-            <h3 className="font-bold text-sm">{isAr ? "دخول وضع المطور" : "Developer Access"}</h3>
-            <input
-              type="password"
-              value={devPassword}
-              onChange={(e) => setDevPassword(e.target.value)}
-              className="w-full p-3 rounded-xl bg-background border border-border text-xs outline-none focus:border-cyan-500"
-              placeholder="Enter dev password"
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setShowDevAuth(false)} className="flex-1 py-2 text-xs rounded-xl bg-slate-800">
-                {isAr ? "إلغاء" : "Cancel"}
-              </button>
-              <button
-                onClick={() => {
-                  if (devPassword === "facescan2025") {
-                    setDevMode(true)
-                    setIsPremium(true)
-                    setShowDevAuth(false)
-                  } else {
-                    alert(isAr ? "كلمة المرور خاطئة" : "Incorrect password")
-                  }
-                }}
-                className="flex-1 py-2 text-xs rounded-xl bg-cyan-600 text-white font-bold"
-              >
-                {isAr ? "دخول" : "Login"}
+                {paymentLoading ? (isAr ? "تأكيد بـ Pi Wallet…" : "Opening Pi Wallet...") : (isAr ? "ادفع 5 Pi بواسطة Pi Wallet" : "Pay 5 Pi via Pi Wallet")}
               </button>
             </div>
           </div>
