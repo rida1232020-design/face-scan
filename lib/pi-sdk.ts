@@ -54,11 +54,13 @@ let _piUser: PiUser | null = null
 let _isInitialized = false
 let _initPromise: Promise<void> | null = null
 
-/** Check if running inside Pi Browser */
+/** Check if running inside Pi Browser or Pi WebView (detects UA string AND Pi SDK presence) */
 export function isPiBrowser(): boolean {
   if (typeof window === "undefined") return false
   const userAgent = navigator.userAgent.toLowerCase()
-  return userAgent.includes("pibrowser") || userAgent.includes("pi browser")
+  const uaMatch = userAgent.includes("pibrowser") || userAgent.includes("pi browser") || userAgent.includes("pi_browser")
+  const sdkPresent = typeof (window as any).Pi?.authenticate === "function"
+  return uaMatch || sdkPresent
 }
 
 function hasPiSDK(): boolean {
@@ -166,10 +168,10 @@ export async function authenticatePiUser(): Promise<PiUser | null> {
   await initPiSDK()
 
   try {
-    console.log("Calling Pi.authenticate...")
+    console.log("Calling Pi.authenticate with [username, payments] scopes...")
     const result = await withTimeout(
       window.Pi.authenticate(
-        ["username"],
+        ["username", "payments"],
         async (payment: any) => {
           if (payment) {
             console.warn("Incomplete Pi payment found during auth:", payment)
@@ -242,35 +244,32 @@ export function setPiUser(user: PiUser): void {
   _piUser = user
 }
 
-/** Create a Pi payment */
+/** Create a Pi payment — always uses the real Pi Wallet SDK, no simulations */
 export async function createPiPayment(
   amount: number,
   memo: string,
   metadata: Record<string, any> = {}
 ): Promise<{ success: boolean; paymentId?: string; txid?: string; error?: string }> {
-  // Ensure initialized first
-  if (isPiBrowser() && !_isInitialized) {
-    await initPiSDK()
+  // Wait for Pi SDK to be ready
+  if (!_isInitialized) {
+    try {
+      await initPiSDK()
+    } catch (e: any) {
+      return {
+        success: false,
+        error: "Pi SDK not available. Please open this app inside Pi Browser to make payments.",
+      }
+    }
   }
 
-  if (!isPiBrowser()) {
-    // Simulate payment in development mode
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          paymentId: `sim_pay_${Date.now()}`,
-          txid: `sim_tx_${Date.now()}`,
-        })
-      }, 2000)
-    })
-  }
-
-  // Double check initialization
-  if (!_isInitialized || !window.Pi) {
-    const ready = await waitForPiSDK()
+  // Final check — Pi must be present and initialized
+  if (!window.Pi || typeof window.Pi.createPayment !== "function") {
+    const ready = await waitForPiSDK(5000)
     if (!ready || !window.Pi) {
-      throw new Error("Pi SDK not available for payment")
+      return {
+        success: false,
+        error: "Pi Browser is required to complete payments. Open this app in Pi Browser.",
+      }
     }
   }
 
